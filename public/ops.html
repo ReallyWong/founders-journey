@@ -34,7 +34,7 @@
 <body>
 <div class="wrap">
   <h1>📊 创业人生 · 运营数据看板</h1>
-  <p class="sub">匿名通关数据聚合 · 数据源 ntfy.sh/fj-founders-journey-v3 · 仅含对局结果（结局/行业/地区/难度），不含任何个人信息</p>
+  <p class="sub">匿名通关数据聚合 · 数据源 Supabase（永久存储） · 仅含对局结果（结局/行业/地区/难度），不含任何个人信息</p>
 
   <div class="cards" id="cards"></div>
 
@@ -81,6 +81,9 @@
 <script>
 const TOPIC = "https://ntfy.sh/fj-founders-journey-v3/json?poll=1";
 const CACHE_KEY = "fj_ops_cache_v1";
+// Supabase：永久数据源（新加坡项目，匿名只读聚合视图）
+const SB_URL = "https://tejyzdubrbiigouznaeh.supabase.co";
+const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlanl6ZHVicmJpaWdvdXpuYWVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MDkzMTgsImV4cCI6MjA5NDM4NTMxOH0._m7GLDjF2b6dLkQIQoTo4UrYVwDBwtr4i3hHZrVHm9g";
 const ENDING_NAMES = { ipo:"🏛️ 上市敲钟", acquired:"🤝 被收购退出", acquihire:"🧩 人才收购", shutdown:"🕯️ 体面关停", bankrupt:"💸 破产清算", runaway:"🏃 欠债跑路", burnout:"🩺 健康崩塌", "groupon-end":"🤝 千团大战·幸存者合并", "groupon-dead":"💀 千团大战·炮灰", "mask-end":"🌬️ 口罩风云·高位套现", "mask-crash":"📉 口罩风云·一地鸡毛" };
 const INDUSTRY_NAMES = { ai:"🤖 AI SaaS", ecom:"📦 跨境电商", fintech:"💳 金融科技", consumer:"📱 消费级App", hardware:"🔧 智能硬件", game:"🎮 游戏工作室", traditional:"🍜 传统行业", angel:"😇 天使投资人", energy:"⚡ 工业能源", biotech:"💊 生物制药", entertainment:"🎬 影视文娱", vcpe:"💼 VC/PE基金" };
 const REGION_NAMES = { shenzhen:"🇨🇳 深圳", singapore:"🇸🇬 新加坡", berlin:"🇩🇪 柏林", london:"🇬🇧 伦敦", silicon:"🇺🇸 硅谷", austin:"🤠 奥斯汀", beijing:"🏯 北京", shanghai:"🌆 上海", nyc:"🗽 纽约", hongkong:"🇭🇰 香港", tokyo:"🇯🇵 东京", israel:"🇮🇱 特拉维夫" };
@@ -157,8 +160,39 @@ function mergePaste() {
   alert(`已合并 ${n} 条对局记录`);
 }
 
+function applyServer(stats, recent) {
+  const row = Array.isArray(stats) ? stats[0] : null;
+  if (!row) return false;
+  cache.runs = row.total || 0;
+  cache.endings = row.by_ending || {};
+  cache.industries = row.by_industry || {};
+  cache.regions = row.by_region || {};
+  cache.difficulties = row.by_difficulty || {};
+  cache.scenarios = {};
+  const mode = row.by_mode || {};
+  cache.scenarios["剧本模式"] = mode.scenario || 0;
+  cache.scenarios["标准模式"] = mode.standard || 0;
+  cache.recent = (recent || []).map(r => ({
+    t: r.created_at ? new Date(r.created_at).getTime() : null,
+    endingId: r.ending_id, industryId: r.industry_id, regionId: r.region_id,
+    difficulty: r.difficulty, scenarioId: r.scenario_id, months: r.months, grade: r.grade,
+  }));
+  return true;
+}
+
+async function loadSupabase() {
+  const h = { apikey: SB_ANON, Authorization: "Bearer " + SB_ANON };
+  const [stats, recent] = await Promise.all([
+    fetch(SB_URL + "/rest/v1/run_stats?select=*", { headers: h }).then(r => { if (!r.ok) throw 0; return r.json(); }),
+    fetch(SB_URL + "/rest/v1/recent_runs?select=*&limit=30", { headers: h }).then(r => { if (!r.ok) throw 0; return r.json(); }),
+  ]);
+  if (!applyServer(stats, recent)) throw 0;
+  save(); render();
+}
+
 async function load() {
   render();
+  try { await loadSupabase(); return; } catch {}
   try {
     const res = await fetch(TOPIC);
     if (!res.ok) throw new Error("http " + res.status);

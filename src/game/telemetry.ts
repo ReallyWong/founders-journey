@@ -16,11 +16,31 @@ export interface RunReport {
   scenarioId?: string;
 }
 
+// Supabase：永久持久化主通道（白名单字段 + 边界校验在数据库端，匿名只可写不可读）
+const SUPABASE_URL = "https://tejyzdubrbiigouznaeh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlanl6ZHVicmJpaWdvdXpuYWVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MDkzMTgsImV4cCI6MjA5NDM4NTMxOH0._m7GLDjF2b6dLkQIQoTo4UrYVwDBwtr4i3hHZrVHm9g";
+// ntfy：备用通道（12 小时缓存，仅作过渡期的冗余）
 const TOPIC = "https://ntfy.sh/fj-founders-journey-v3";
 
 export function reportRun(r: RunReport): void {
   try {
     if (typeof fetch === "undefined" || typeof navigator === "undefined") return;
+    fetch(`${SUPABASE_URL}/rest/v1/runs`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        ending_id: r.endingId, grade: r.grade, months: r.months,
+        industry_id: r.industryId, region_id: r.regionId,
+        valuation: r.valuation, mrr: r.mrr, egg_count: r.eggCount,
+        difficulty: r.difficulty ?? null, scenario_id: r.scenarioId ?? null,
+      }),
+      keepalive: true,
+    }).catch(() => {});
     const body = JSON.stringify({ v: 1, ts: Date.now(), ...r });
     fetch(TOPIC, {
       method: "POST",
