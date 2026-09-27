@@ -51,6 +51,44 @@ export function reportRun(r: RunReport): void {
   } catch { /* 静默失败，绝不影响游戏 */ }
 }
 
+// ─── 课堂比拼上报（v1.6-beta） ──────────────────────────────────────────────
+// 比拼码即 tournaments.seed：玩家输入同一个码 → 同一随机种子 → 同一局。
+// 首次有人用该码开局时自动建局（24 小时后封盘）；每次通关上报一条 entry。
+export function reportTournament(company: string, seed: string, report: RunReport & { rngSeed?: number }): void {
+  try {
+    if (typeof fetch === "undefined") return;
+    const headers = {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+    };
+    (async () => {
+      const find = await fetch(
+        `${SUPABASE_URL}/rest/v1/tournaments?seed=eq.${encodeURIComponent(seed)}&select=id&limit=1`,
+        { headers }
+      );
+      const arr = await find.json();
+      let tid: string | undefined = Array.isArray(arr) && arr[0]?.id;
+      if (!tid) {
+        const create = await fetch(`${SUPABASE_URL}/rest/v1/tournaments`, {
+          method: "POST",
+          headers: { ...headers, Prefer: "return=representation" },
+          body: JSON.stringify({ seed, closes_at: new Date(Date.now() + 864e5).toISOString() }),
+        });
+        const carr = await create.json();
+        tid = Array.isArray(carr) && carr[0]?.id;
+        if (!tid) return;
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/tournament_entries`, {
+        method: "POST",
+        headers: { ...headers, Prefer: "return=minimal" },
+        body: JSON.stringify({ tournament_id: tid, company, report }),
+        keepalive: true,
+      }).catch(() => {});
+    })().catch(() => {});
+  } catch { /* 静默失败，绝不影响游戏 */ }
+}
+
 // ─── 本地生涯统计（结局图鉴） ────────────────────────────────────────────────
 export interface Career {
   runs: number;

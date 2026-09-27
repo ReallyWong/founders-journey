@@ -3,18 +3,52 @@ import type {
   GameState, Gender, PendingDecision, Choice, LogEntry, Ending, Candidate, Difficulty,
 } from "./types";
 import { REGIONS, INDUSTRIES, EVENTS, INVESTORS, CANDIDATES, ENDINGS, NAMES, COFOUNDERS, SCENARIOS } from "./data";
-import { reportRun, recordRun, loadCareer } from "./telemetry";
+import { reportRun, reportTournament, recordRun, loadCareer } from "./telemetry";
 import { clearSave } from "./save";
 
 const START_YEAR = 2024;
 const MONTH_NAMES = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
+// ─── 可播种随机源（v1.6-beta：多人同 seed 比拼的重放基石）────────────────────
+// mulberry32：种子相同 ⇒ 整局随机序列相同。注意：读档续玩会重放跳过，
+// 与原生连续对局可能有轻微序列偏移（比拼要求单 session 打完，见内部手册）。
+let rngState = 0;
+let activeSeed: number | null = null;
+function nextRandom(): number {
+  rngState |= 0;
+  rngState = (rngState + 0x6d2b79f5) | 0;
+  let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+export function seedRng(seed: number): void {
+  rngState = seed | 0;
+  activeSeed = seed | 0;
+}
+// 比拼码 → 32 位种子（FNV-1a：同码必同局）
+export function hashSeed(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+  }
+  return h | 0;
+}
+function syncRng(s: GameState): void {
+  if (activeSeed !== s.rngSeed) {
+    seedRng(s.rngSeed);
+    // 近似快进：每月约 31 次取随机（决策+月度+事件），保证读档后序列确定
+
+    const skip = Math.min(3000, s.month * 31);
+    for (let i = 0; i < skip; i++) nextRandom();
+  }
+}
+
 export function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+  return arr[Math.floor(nextRandom() * arr.length)];
 }
 
 export function randInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.floor(nextRandom() * (max - min + 1)) + min;
 }
 
 export function fmtMoney(s: GameState, v: number): string {
@@ -28,6 +62,8 @@ export interface NewGameOptions {
   difficulty?: Difficulty;
   cofounderId?: string;
   scenarioId?: string;
+  seed?: number; // v1.6-beta：比拼模式由服务端下发，同 seed = 同一随机序列
+  tournamentCode?: string;
 }
 
 export function newGame(name: string, gender: Gender, regionId: string, industryId: string, opts: NewGameOptions = {}): GameState {
@@ -38,6 +74,9 @@ export function newGame(name: string, gender: Gender, regionId: string, industry
   const industry = INDUSTRIES.find((i) => i.id === (scenario?.industryId ?? industryId)) ?? INDUSTRIES[0];
   let startCash = scenario?.startCash ?? industry.startCash ?? 15;
   if (difficulty === "easy") startCash = Math.round(startCash * 1.5);
+  // v1.6-beta：播种随机源（比拼同 seed；单机随机）
+  const rngSeed = opts.seed ?? (opts.tournamentCode ? hashSeed(opts.tournamentCode) : ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) | 0));
+  seedRng(rngSeed);
   const isAngel = industry.id === "angel";
   const isVC = industry.id === "vcpe";
   // 🥚 彩蛋：累计通关 3 局的「连续创业者」获得老兵光环
@@ -82,6 +121,10 @@ export function newGame(name: string, gender: Gender, regionId: string, industry
     eventCooldown: 0,
     budget: { rd: 40, marketing: 30, sales: 30 },
     speed: 0,
+    rngSeed,
+    tournamentCode: opts.tournamentCode,
+    awareness: 5,
+    accessibility: 10,
   };
   // 🥚 老兵光环提示
   if (veteran) {
@@ -92,6 +135,8 @@ export function newGame(name: string, gender: Gender, regionId: string, industry
     state.log.push({ month: 0, text: "🎓 教学难度：初始资金 ×1.5，危机事件发生率降低。适合第一次创业的玩家。", type: "system" });
   } else if (difficulty === "realism") {
     state.log.push({ month: 0, text: "🔥 真实模式：危机更多、融资更难，且本局不自动存档（单次生命，不能读档）。这是真实创业者的世界。", type: "bad" });
+  } else if (difficulty === "hell") {
+    state.log.push({ month: 0, text: "🇨🇳 地狱 · 中国特别版：本局不自动存档。危机触发率 65%，你将直面监管新规、税务稽查、社保稽核、账户冻结等系统性风险——全部取材自真实创业环境。调查不等于定罪，但每一步都要留痕。", type: "bad" });
   }
   // 合伙人入伙
   if (cofounder) {
@@ -138,6 +183,7 @@ export function log(s: GameState, text: string, type: LogEntry["type"] = "info")
 
 // ─── 应用选择效果 ───────────────────────────────────────────────────────────
 export function applyChoice(s: GameState, choice: Choice): GameState {
+  syncRng(s);
   let n = { ...s };
   const e = choice.effects;
 
@@ -159,6 +205,11 @@ export function applyChoice(s: GameState, choice: Choice): GameState {
     n.portfolio = [...(n.portfolio ?? []), e.portfolioAdd];
     n.tags = [...n.tags, "has-portfolio"];
   }
+  // v1.6-beta：三层债务 + 知名度/渠道 effect
+  if (e.loan) n.loan = (n.loan ?? 0) + e.loan;
+  if (e.loanMult) n.loan = (n.loan ?? 0) * e.loanMult;
+  if (e.awareness) n.awareness = clamp(n.awareness + e.awareness, 0, 100);
+  if (e.accessibility) n.accessibility = clamp(n.accessibility + e.accessibility, 0, 100);
 
   n = log(n, choice.resultText, "info");
   if (e.portfolioAdd) n = log(n, `💼 投资组合 +1：${e.portfolioAdd}（当前 ${n.portfolio!.length} 个项目）`, "money");
@@ -183,6 +234,7 @@ function clamp(v: number, min: number, max: number) {
 // ─── 月度推进 ───────────────────────────────────────────────────────────────
 export function advanceMonth(s: GameState): GameState {
   if (!s.alive || s.pendingDecision) return s;
+  syncRng(s);
   let n: GameState = { ...s };
   n.month += 1;
   n.year = (n.scenario?.year ?? START_YEAR) + Math.floor(n.month / 12);
@@ -192,9 +244,19 @@ export function advanceMonth(s: GameState): GameState {
   const region = n.region;
   const mod = region.modifiers;
 
-  // ── 收入 ──
-  const marketingFactor = 0.5 + (n.budget.marketing / 100) * 1.5;
-  let newUsers = n.industry.baseUsers * marketingFactor * (n.product / 50) * (mod.marketAccess ?? 1) * randInt(70, 130) / 100;
+  // ── 收入（v1.6-beta：知名度/渠道双存量模型，借鉴 Capstone 感知漏斗）──
+  // 知名度：营销预算堆出来，每月漏水（停止投放就被人遗忘）；教学难度漏水减半
+  const mktEff = n.industry.mktEff ?? 0.12;
+  const leak = n.difficulty === "easy" ? 0.05 : 0.10;
+  n.awareness = clamp(n.awareness + (n.budget.marketing / 100) * mktEff * 100 * (0.8 + 0.4 * nextRandom()) - n.awareness * leak, 0, 100);
+  // 渠道可及性：销售预算铺出来，漏水较慢（渠道资产更持久，但也会老化）
+  n.accessibility = clamp(n.accessibility + (n.budget.sales / 100) * 6 - n.accessibility * 0.03, 0, 100);
+  let newUsers = n.industry.baseUsers
+    * (n.awareness / 100)
+    * (0.4 + (n.accessibility / 100) * 0.6)
+    * (n.product / 50)
+    * (mod.marketAccess ?? 1)
+    * (0.7 + 0.6 * nextRandom());
   if (n.stage === "idea" || n.stage === "validate") newUsers = 0;
   n.users = Math.max(0, Math.round(n.users + newUsers));
   const churn = n.users * 0.06;
@@ -209,12 +271,32 @@ export function advanceMonth(s: GameState): GameState {
   // 行业特性开销：硬件备货占款 / 软件云账单 / 跨境物流仓储 / 金融合规（见 industryExtraBurn）
   const burn = (n.industry.baseBurn + salaries + marketingBurn) * (mod.burnMultiplier ?? 1) + industryExtraBurn(n);
   n.cash += n.mrr - burn;
+  // v1.6-beta：Big Al 三层债务——先免息亲友额度（≤20万，并入 debt），超出进紧急贷款（月息2.5%复利）
   if (n.cash < 0) {
-    n.debt += -n.cash;
+    const shortfall = -n.cash;
+    const creditRoom = Math.max(0, 20 - n.debt);
+    const toCredit = Math.min(shortfall, creditRoom);
+    const toLoan = shortfall - toCredit;
+    n.debt += toCredit;
+    n.loan = (n.loan ?? 0) + toLoan;
     n.cash = 0;
-    n = log(n, `⚠️ 现金耗尽！本月靠借债 ${fmtMoney(n, burn - n.mrr)} 周转`, "bad");
-    n.morale = clamp(n.morale - 8, 0, 100);
+    if (toLoan > 0) {
+      n = log(n, `🆘 紧急贷款注入 ${fmtMoney(n, toLoan)}（月息 2.5%，年化约 34%）——救急的钱是会上瘾的。`, "bad");
+      n.morale = clamp(n.morale - 8, 0, 100);
+    } else if (toCredit > 0 && n.debt - toCredit <= 0) {
+      n = log(n, `💳 现金见底，亲友信用卡垫付了 ${fmtMoney(n, toCredit)}（免息，但人情也是债）。`, "bad");
+    }
   }
+  // 紧急贷款复利（桥接资金不分享 upside，只吞噬现金流）
+  if ((n.loan ?? 0) > 0) {
+    const cur = n.loan ?? 0;
+    const interest = cur * 0.025;
+    n.loan = cur + interest;
+    if (n.month % 3 === 1)
+      n = log(n, `💸 紧急贷款月息 ${fmtMoney(n, interest)} 已计入本金——复利的螺旋开始转动。`, "bad");
+  }
+  // 连续零收入月数（债务重组事件触发条件）
+  n.zeroRev = n.mrr <= 0.5 ? (n.zeroRev ?? 0) + 1 : 0;
 
   // ── 产品进度 ──
   if ((n.stage === "mvp" || n.stage === "growth") && n.product < 100) {
@@ -293,8 +375,16 @@ function advanceStage(s: GameState): GameState {
         n.pendingDecision = pitchDecision(n, "seed");
       }
       break;
-    case "seed":
+    case "seed": {
+      // v1.6-alpha：种子轮被拒不再软锁——冷却期满自动开启二次路演
+      const r = n.pitchRetry;
+      if (r?.round === "seed" && n.month >= r.at) {
+        n = { ...n, pitchRetry: undefined };
+        n = log(n, "🔄 三个月冷却期结束。你换了 BP、换了投资人名单——种子轮，再战。", "system");
+        n.pendingDecision = pitchDecision(n, "seed", true);
+      }
       break; // 融资成功推进
+    }
     case "growth":
       if (n.mrr >= 25 && n.month > 6) {
         n.stage = "seriesA";
@@ -302,14 +392,24 @@ function advanceStage(s: GameState): GameState {
         n.pendingDecision = pitchDecision(n, "A");
       }
       break;
-    case "seriesA":
+    case "seriesA": {
+      // v1.6-alpha：A 轮被拒不再软锁——冷却期满自动开启二次路演
+      const r = n.pitchRetry;
+      if (r?.round === "A" && n.month >= r.at) {
+        n = { ...n, pitchRetry: undefined };
+        n = log(n, "🔄 三个月冷却期结束。你调整了增长叙事、补了关键数据——A 轮，再战。", "system");
+        n.pendingDecision = pitchDecision(n, "A", true);
+      }
       break;
+    }
     case "scale": {
       const sr = n.scaleRound ?? 0;
-      if (sr === 0 && n.mrr >= 60 && n.month > 14) {
+      // v1.6-alpha：B/C 轮被拒后不自动重复触发，改由统一的二次路演机制调度（含估值惩罚）
+      const noRetryPending = (rd: "B" | "C") => n.pitchRetry?.round !== rd;
+      if (sr === 0 && noRetryPending("B") && n.mrr >= 60 && n.month > 14) {
         n = log(n, "📈 增长曲线进入了机构视野：B 轮基金带着更厚的支票簿找上门了。（MRR≥60 · 第 15 个月后）", "system");
         n.pendingDecision = pitchDecision(n, "B");
-      } else if (sr === 1 && n.mrr >= 100 && n.month > 22) {
+      } else if (sr === 1 && noRetryPending("C") && n.mrr >= 100 && n.month > 22) {
         n = log(n, "🏛️ 准独角兽的牌桌：C 轮（Pre-IPO）机构带着上市资源与承销关系找上门。（MRR≥100 · 第 23 个月后）", "system");
         n.pendingDecision = pitchDecision(n, "C");
       } else if (sr >= 2 && n.valuation >= 2600 && n.mrr >= 120) {
@@ -317,6 +417,14 @@ function advanceStage(s: GameState): GameState {
         n.stage = "endgame";
         n = log(n, "🏛️ C 轮交割完成，你收到了投行的上市辅导邀约——敲钟的梦想触手可及。", "good");
         n.pendingDecision = ipoDecision(n);
+      }
+      // v1.6-alpha：B/C 轮二次路演（冷却期满自动再战）
+      const rb = n.pitchRetry;
+      if (!n.pendingDecision && rb && n.month >= rb.at &&
+          ((rb.round === "B" && sr === 0) || (rb.round === "C" && sr === 1))) {
+        n = { ...n, pitchRetry: undefined };
+        n = log(n, `🔄 三个月冷却期结束。${rb.round} 轮，再战。`, "system");
+        n.pendingDecision = pitchDecision(n, rb.round, true);
       }
       break;
     }
@@ -358,7 +466,7 @@ const ROUND_TITLES: Record<Round, string> = { seed: "🌱 种子轮路演", A: "
 // 各轮金额区间（万）与谈判后的稀释系数
 const ROUND_CHECKS: Record<Round, [number, number]> = { seed: [0, 0], A: [500, 1500], B: [1000, 3000], C: [2500, 6000] };
 
-function pitchDecision(s: GameState, round: Round): PendingDecision {
+function pitchDecision(s: GameState, round: Round, isRetry = false): PendingDecision {
   const investor = pick(INVESTORS);
   const isSeed = round === "seed";
   let amount: number;
@@ -371,6 +479,8 @@ function pitchDecision(s: GameState, round: Round): PendingDecision {
     // 轮次越往后，机构占比要求略降但金额更大
     ask = clamp(round === "A" ? Math.max(10, investor.ask - 5) : round === "B" ? clamp(investor.ask - 6, 8, 14) : clamp(investor.ask - 8, 6, 12), 6, 20);
   }
+  // v1.6-alpha：连续受挫的投资人会要求更多股份（每次失败 +2%，上限 +6%）
+  ask = clamp(ask + Math.min(6, (s.pitchFailCount ?? 0) * 2), 6, 25);
   const check: Record<string, number> = {
     营收数据: s.mrr * 2,
     市场规模: s.industry.fundingAppeal * 30,
@@ -384,10 +494,12 @@ function pitchDecision(s: GameState, round: Round): PendingDecision {
   const fitScore = (check[investor.preference] ?? 20) / 60;
   const cfBonus = s.cofounder?.trait === "mentor" ? 0.08 : 0;
   const realismPenalty = (s.difficulty ?? "standard") === "realism" ? -0.05 : 0;
-  const winProb = clamp(0.35 + realismPenalty + cfBonus + fitScore * 0.5 + (s.tags.includes("backup-investors") ? 0.1 : 0), 0.1, 0.92);
+  // v1.6-alpha：连续受挫后更难融——市场闻得到绝望（每次失败 -4% 胜率，下限 10%）
+  const failPenalty = Math.min(0.15, (s.pitchFailCount ?? 0) * 0.04);
+  const winProb = clamp(0.35 + realismPenalty + cfBonus + fitScore * 0.5 + (s.tags.includes("backup-investors") ? 0.1 : 0) - failPenalty, 0.1, 0.92);
 
-  const roll = Math.random();
-  const negRoll = Math.random();
+  const roll = nextRandom();
+  const negRoll = nextRandom();
   const acceptId = roll < winProb ? "accept" : "accept-anyway";
   const negId = negRoll < winProb * 0.55 ? "negotiate-up" : "negotiate-fail";
   const acceptText = `接受：${s.region.currency}${amount} 万换 ${ask}%`;
@@ -397,12 +509,16 @@ function pitchDecision(s: GameState, round: Round): PendingDecision {
     : round === "C"
       ? "\n\n💼 C 轮是上市前最后一轮机构钱：投后你将开始接受投行、审计、律所的上市辅导尽调。"
       : "";
+  // v1.6-alpha：二次路演的开场白（上次被拒的市场记忆）
+  const retryScene = isRetry
+    ? `上次被${s.pitchFailCount && s.pitchFailCount > 1 ? "第 " + s.pitchFailCount + " 次" : ""}拒后，你花了三个月重整 BP、换了一批投资人名单，还下调了估值预期。这是一次新的路演——对方不知道你的伤疤，但市场记得。\n\n`
+    : "";
 
   return {
     kind: "pitch",
     round,
-    title: ROUND_TITLES[round],
-    scene: `${investor.name}（${investor.style}）听完了你的 20 分钟路演。对方最看重「${investor.preference}」。\n\n你的关键数据：MRR ${fmtMoney(s, s.mrr)} · 用户 ${s.users.toLocaleString()} · 产品完成度 ${Math.round(s.product)}% · 团队 ${s.team} 人\n\n对方开口：「我们最多出 ${s.region.currency}${amount} 万，要 ${ask}% 的股份。你可以考虑，但我下周还要见你的两个竞品。」${growthHint}`,
+    title: isRetry ? `${ROUND_TITLES[round]} · 再战` : ROUND_TITLES[round],
+    scene: `${retryScene}${investor.name}（${investor.style}）听完了你的 20 分钟路演。对方最看重「${investor.preference}」。\n\n你的关键数据：MRR ${fmtMoney(s, s.mrr)} · 用户 ${s.users.toLocaleString()} · 产品完成度 ${Math.round(s.product)}% · 团队 ${s.team} 人\n\n对方开口：「我们最多出 ${s.region.currency}${amount} 万，要 ${ask}% 的股份。你可以考虑，但我下周还要见你的两个竞品。」${growthHint}`,
     investor: { ...investor, checkSize: [amount, amount], ask },
     choices: [
       { id: acceptId, text: acceptText, effects: {}, resultText: "" },
@@ -412,6 +528,7 @@ function pitchDecision(s: GameState, round: Round): PendingDecision {
 }
 
 export function resolvePitch(s: GameState, choiceId: string, investor: NonNullable<PendingDecision["investor"]>, round?: Round): GameState {
+  syncRng(s);
   let n = { ...s };
   const rd: Round = round ?? (n.stage === "seed" ? "seed" : "A");
   const amount = investor.checkSize[0];
@@ -423,11 +540,18 @@ export function resolvePitch(s: GameState, choiceId: string, investor: NonNullab
       n.raised = [...n.raised, { round: ROUND_NAMES[rd], amount, dilution: ask, investor: investor.name }];
       n = log(n, `🎉 ${investor.name} 打款 ${fmtMoney(n, amount)}！稀释 ${ask}%。`, "good");
       n.morale = clamp(n.morale + 12, 0, 100);
+      n.awareness = clamp(n.awareness + 15, 0, 100); // 融资成功自带 PR 效应（TechCrunch 效应）
+      n.pitchRetry = undefined;
       n = applyRoundOutcome(n, rd);
     } else {
       n = log(n, `${investor.name} 婉拒了：「我们再看看。」（你的「${investor.preference}」数据不够打动对方）`, "bad");
       n.morale = clamp(n.morale - 8, 0, 100);
       n.eventCooldown = 2;
+      // v1.6-alpha：融资失败不再软锁——3 个月冷却后可二次路演，但估值预期下调 10%
+      n.pitchRetry = { round: rd, at: n.month + 3 };
+      n.pitchFailCount = (n.pitchFailCount ?? 0) + 1;
+      n.valuation = Math.max(20, n.valuation * 0.9);
+      n = log(n, "📉 融资受挫会留下市场记忆：3 个月冷却期后可再次路演（估值预期已下调 10%）。越拖越贱卖是融资的铁律——最优秀的创始人在账上还有 6 个月钱时就开始融资。", "info");
       n = log(n, "💡 创业课：融资是匹配游戏——基金有自己的赛道 thesis 和美元规模，被 100 家拒绝只说明匹配没发生，不代表你不行。Airbnb 曾被 7 个 YC 合伙人中的 5 个拒绝。", "info");
     }
   } else if (choiceId === "negotiate-up") {
@@ -436,11 +560,18 @@ export function resolvePitch(s: GameState, choiceId: string, investor: NonNullab
     n.raised = [...n.raised, { round: ROUND_NAMES[rd], amount, dilution: Math.round(ask * 0.75), investor: investor.name }];
     n = log(n, `🎉 谈判成功！${fmtMoney(n, amount)} 到账，只稀释 ${Math.round(ask * 0.75)}%。`, "good");
     n.morale = clamp(n.morale + 15, 0, 100);
+    n.awareness = clamp(n.awareness + 15, 0, 100);
+    n.pitchRetry = undefined;
     n = applyRoundOutcome(n, rd);
   } else {
     n = log(n, `${investor.name} 脸色冷了下来：「这不是菜市场。」谈判破裂。`, "bad");
     n.morale = clamp(n.morale - 10, 0, 100);
     n.eventCooldown = 2;
+    // v1.6-alpha：谈判破裂同样可二次路演（冷却 + 估值惩罚）
+    n.pitchRetry = { round: rd, at: n.month + 3 };
+    n.pitchFailCount = (n.pitchFailCount ?? 0) + 1;
+    n.valuation = Math.max(20, n.valuation * 0.9);
+    n = log(n, "📉 谈崩了。3 个月冷却期后可再次路演，但估值预期已下调 10%。", "info");
   }
   n = checkEnding(n);
   return n;
@@ -501,6 +632,7 @@ function hireDecision(s: GameState): PendingDecision {
 }
 
 export function resolveHire(s: GameState, choiceId: string, candidates: [Candidate, Candidate]): GameState {
+  syncRng(s);
   let n: GameState = { ...s, pendingDecision: null };
   if (choiceId === "none") {
     n = log(n, "你决定宁缺毋滥。团队的产出暂时承压，但人心没有散。", "info");
@@ -531,7 +663,7 @@ const STAGE_ORDER: Record<string, number> = { idea: 1, validate: 2, mvp: 3, seed
 // 难度决定随机事件发生率：教学 22% / 标准 38% / 真实 50%
 function eventChance(s: GameState): number {
   const d = s.difficulty ?? "standard";
-  return d === "easy" ? 0.22 : d === "realism" ? 0.5 : 0.38;
+  return d === "easy" ? 0.22 : d === "realism" ? 0.5 : d === "hell" ? 0.65 : 0.38;
 }
 
 // 剧本模式：按 ID 强制触发事件（无视阶段条件；已触发过则跳过，防止重复）
@@ -551,12 +683,13 @@ function maybeTriggerEvent(s: GameState): GameState {
   const egg = EVENTS.find((ev) =>
     !ev.id.startsWith("sc-") &&
     (ev.id.startsWith("egg-") || ev.weight === 0) &&
+    !(ev.hellOnly && s.difficulty !== "hell") &&
     !s.tags.includes(`ev-${ev.id}`) &&
     stageNum >= ev.minStage &&
     (!ev.maxStage || stageNum <= ev.maxStage) &&
     (!ev.condition || ev.condition(s))
   );
-  if (egg && Math.random() < 0.5) {
+  if (egg && nextRandom() < 0.5) {
     let n = { ...s };
     n.tags = [...n.tags, `ev-${egg.id}`];
     n.eventCooldown = 2;
@@ -565,15 +698,16 @@ function maybeTriggerEvent(s: GameState): GameState {
   }
   const eligible = EVENTS.filter((ev) => {
     if (ev.id.startsWith("egg-") || ev.weight <= 0) return false; // 彩蛋/专属事件不走随机池
+    if (ev.hellOnly && s.difficulty !== "hell") return false; // 中国特别版系统性风险仅地狱难度
     if (ev.once && s.tags.includes(`ev-${ev.id}`)) return false;
     if (stageNum < ev.minStage) return false;
     if (ev.maxStage && stageNum > ev.maxStage) return false;
     if (ev.condition && !ev.condition(s)) return false;
     return true;
   });
-  if (!eligible.length || Math.random() > eventChance(s)) return s;
+  if (!eligible.length || nextRandom() > eventChance(s)) return s;
   const totalW = eligible.reduce((a, e) => a + e.weight, 0);
-  let r = Math.random() * totalW;
+  let r = nextRandom() * totalW;
   let chosen = eligible[0];
   for (const ev of eligible) {
     r -= ev.weight;
@@ -608,6 +742,7 @@ function ipoDecision(s: GameState): PendingDecision {
 }
 
 export function resolveEndgame(s: GameState, choiceId: string): GameState {
+  syncRng(s);
   let n = { ...s };
   if (choiceId === "ipo") {
     const success = n.mrr > 100 && n.reputation > -10 && !n.tags.includes("toxic-terms") && n.health > 25 && n.team >= 10;
@@ -663,6 +798,7 @@ export function finishGame(s: GameState, endingId: string): GameState {
       scenarioId: s.scenario?.id,
     };
     reportRun(report);
+    if (s.tournamentCode) reportTournament(s.name, s.tournamentCode, { ...report, rngSeed: s.rngSeed });
     recordRun(loadCareer(), report);
   } catch { /* 绝不影响游戏 */ }
   const ending: Ending = {
@@ -686,11 +822,12 @@ function checkEnding(s: GameState): GameState {
   let n = s;
   if (n.health <= 0) return finishGame(n, "burnout");
   if (n.morale <= 0 && n.cash < 5) return finishGame(n, "shutdown");
-  if (n.debt > 120) {
+  const totalDebt = n.debt + (n.loan ?? 0);
+  if (totalDebt > 120) {
     return finishGame(n, "runaway");
   }
-  if (n.debt > 60 && n.cash <= 0 && n.mrr < n.industry.baseBurn) {
-    // 债务深重且看不到收入：破产清算
+  if (totalDebt > 60 && n.cash <= 0 && n.mrr < n.industry.baseBurn) {
+    // 债务深重且看不到收入：破产清算（亲友债 + 紧急贷款一起算总账）
     return finishGame(n, "bankrupt");
   }
   if (n.month > 96) {
@@ -740,7 +877,7 @@ export function setBudgetAbs(s: GameState, key: "rd" | "marketing" | "sales", va
 }
 
 export function shutdownCompany(s: GameState): GameState {
-  return finishGame(s, s.debt > 30 ? "bankrupt" : "shutdown");
+  return finishGame(s, s.debt + (s.loan ?? 0) > 30 ? "bankrupt" : "shutdown");
 }
 
 export function currentRunway(s: GameState): number {

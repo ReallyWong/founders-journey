@@ -49,7 +49,7 @@ export default function GameScreen({ state, setState }: Props) {
 
   // 自动存档：任何变化时保存进行中的对局（真实模式为单次生命，不存档）
   useEffect(() => {
-    if (state.alive && state.difficulty !== "realism") saveGame(state);
+    if (state.alive && state.difficulty !== "realism" && state.difficulty !== "hell") saveGame(state);
   }, [state]);
 
   // 决策出现时清空临时状态
@@ -139,7 +139,7 @@ export default function GameScreen({ state, setState }: Props) {
             <div className="text-sm text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span>{state.year} 年 {state.season}（第 {state.month + 1} 个月） · <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100">{stageName}</Badge></span>
               {state.difficulty === "easy" && <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">🎓 教学</Badge>}
-              {state.difficulty === "realism" && <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-100">🔥 真实模式 · 单次生命</Badge>}
+              {(state.difficulty === "realism" || state.difficulty === "hell") && <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-100">🔥 真实模式 · 单次生命</Badge>}
               {state.cofounder && <Badge className="bg-sky-100 text-sky-700 hover:bg-sky-100">🤝 {state.cofounder.name} · {state.cofounder.role}</Badge>}
               {state.scenario && <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">🎬 剧本模式</Badge>}
             </div>
@@ -180,7 +180,7 @@ export default function GameScreen({ state, setState }: Props) {
           {stat("用户", state.users.toLocaleString())}
           {stat("产品", `${Math.round(state.product)}%`)}
           {stat("团队", `${state.team} 人`)}
-          {stat("债务", fmtMoney(state, state.debt), state.debt > 30)}
+          {stat("总债务", fmtMoney(state, state.debt + (state.loan ?? 0)), state.debt + (state.loan ?? 0) > 30)}{state.loan ? ` ⚠️其中高利贷 ${fmtMoney(state, state.loan)}` : ""}
         </div>
 
         {/* 状态条 */}
@@ -190,6 +190,8 @@ export default function GameScreen({ state, setState }: Props) {
             { label: "创始人健康", v: state.health, color: "bg-sky-500" },
             { label: "市场口碑", v: (state.reputation + 100) / 2, raw: state.reputation, color: "bg-amber-500" },
             { label: "产品完成度", v: state.product, color: "bg-purple-500" },
+            { label: "📣 知名度", v: state.awareness, color: "bg-pink-500" },
+            { label: "🤝 渠道可及", v: state.accessibility, color: "bg-indigo-500" },
           ].map((b) => (
             <div key={b.label} className="rounded-lg bg-white border border-slate-200 shadow-sm px-3 py-2">
               <div className="flex justify-between text-xs mb-1">
@@ -206,7 +208,7 @@ export default function GameScreen({ state, setState }: Props) {
           <CardHeader className="py-3">
             <CardTitle className="text-sm text-slate-700">月度预算分配（总和 100%）</CardTitle>
             <p className="text-xs text-slate-500 mt-1">
-              🔧 研发 → 产品完成度进度（MVP 与增长期生效） ｜ 📣 投放 → 新客数量，但产品成型后会显著增加烧钱 ｜ 🤝 销售 → 营收转化效率（同样用户量换来更多 MRR）
+              🔧 研发 → 产品完成度（MVP 与增长期生效）｜ 📣 投放 → 知名度：每月自动漏水 10%，停投就会被市场遗忘 ｜ 🤝 销售 → 渠道可及性（漏水较慢）+ 营收转化效率。新客 = 知名度 × 渠道 × 产品力
             </p>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-x-6 gap-y-3">

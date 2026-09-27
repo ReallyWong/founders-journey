@@ -1,7 +1,7 @@
 // ─── 创业人生 · 核心类型定义 ────────────────────────────────────────────────
 
 export type Gender = "male" | "female";
-export type Difficulty = "easy" | "standard" | "realism";
+export type Difficulty = "easy" | "standard" | "realism" | "hell";
 
 // ─── 联合创始人 ─────────────────────────────────────────────────────────────
 export interface Cofounder {
@@ -64,6 +64,7 @@ export interface Industry {
   locked?: boolean; // 是否需要通关解锁
   startCash?: number; // 自定义初始资金（隐藏职业）
   mechanic?: string; // 行业专属机制一句话说明（创建界面展示）
+  mktEff?: number; // 营销预算 → 知名度的转化效率（默认 0.12）
 }
 
 export interface Choice {
@@ -88,6 +89,10 @@ export interface Effects {
   health?: number;
   reputation?: number;
   debt?: number;
+  loan?: number; // v1.6-beta：紧急贷款本金变化
+  loanMult?: number; // v1.6-beta：紧急贷款本金乘数（债务重组/毒丸条款）
+  awareness?: number; // v1.6-beta：知名度变化
+  accessibility?: number;
   valuationPct?: number;
   team?: number; // 人数变化
   months?: number; // 消耗月份（时间推进）
@@ -106,6 +111,7 @@ export interface GameEvent {
   weight: number;
   once?: boolean;
   condition?: (s: GameState) => boolean;
+  hellOnly?: boolean; // v1.6-beta：仅地狱难度（中国特别版系统性风险事件）
   choices: Choice[];
 }
 
@@ -175,6 +181,18 @@ export interface GameState {
   raised: { round: string; amount: number; dilution: number; investor: string }[];
   // v1.5.1：规模化阶段的多轮次融资进度（0=待B轮 1=待C轮 2=已完成）
   scaleRound?: number;
+  // v1.6-alpha：二次路演（融资失败后冷却期结束可再战，含估值惩罚）
+  pitchRetry?: { round: "seed" | "A" | "B" | "C"; at: number };
+  pitchFailCount?: number;
+  // v1.6-beta：可播种随机源 + 比拼码
+  rngSeed: number;
+  tournamentCode?: string;
+  // v1.6-beta：Big Al 三层债务——亲友额度(并入debt,≤20万,0息) / 紧急贷款(loan,月息2.5%复利)
+  loan?: number;
+  zeroRev?: number; // 连续零收入月数（债务重组事件触发条件）
+  // v1.6-beta：知名度/渠道双存量（品牌资产模型，替代线性买量）
+  awareness: number;      // 0-100，每月漏水 10%
+  accessibility: number;  // 0-100，每月漏水 3%
   // v1.5：投资组合（VC/PE、天使行业记账）
   portfolio?: string[];
   // 本轮决策

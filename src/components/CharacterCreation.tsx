@@ -11,6 +11,7 @@ interface StartOptions {
   difficulty: Difficulty;
   cofounderId?: string;
   scenarioId?: string;
+  tournamentCode?: string;
 }
 
 interface Props {
@@ -24,6 +25,7 @@ const DIFFICULTIES: { id: Difficulty; name: string; desc: string }[] = [
   { id: "easy", name: "🎓 教学", desc: "初始资金 ×1.5，危机事件大幅减少。第一次创业的温柔世界。" },
   { id: "standard", name: "⚖️ 标准", desc: "设计者的预期体验。危机与机会并存，九死一生但值得。" },
   { id: "realism", name: "🔥 真实模式", desc: "危机更多、融资更难、不自动存档（单次生命，不能读档）。这就是真实创业者的世界。" },
+  { id: "hell", name: "🇨🇳 地狱 · 中国特别版", desc: "真实模式规则之上：危机触发率 65%，独有系统性风险事件（监管、税务、稽查、账户冻结）。在这里活下来的创业者，配得上任何掌声。" },
 ];
 
 export default function CharacterCreation({ onStart, onContinue }: Props) {
@@ -34,6 +36,7 @@ export default function CharacterCreation({ onStart, onContinue }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>("standard");
   const [cofounderId, setCofounderId] = useState<string>("");
   const [scenarioId, setScenarioId] = useState<string>("");
+  const [tourney, setTourney] = useState<string>("");
   const [showAll, setShowAll] = useState(false);
   const [angelUnlocked] = useState(() => {
     try { return localStorage.getItem("fj_angel_unlocked") === "1"; } catch { return false; }
@@ -260,6 +263,32 @@ export default function CharacterCreation({ onStart, onContinue }: Props) {
           </CardContent>
         </Card>
 
+        {/* 课堂比拼：输入比拼码，全班打同一局 */}
+        <Card className="bg-white border-slate-200 shadow-sm">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm text-slate-700">🏆 同局比拼（可选）</CardTitle>
+            <p className="text-xs text-slate-500 mt-1">
+              输入老师/朋友发的比拼码，所有玩家将使用<b>同一个随机种子</b>打同一局，通关后成绩自动上榜，24 小时后在年报页见分晓。留空则为普通单机局。
+            </p>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <Input
+              value={tourney}
+              onChange={(ev) => setTourney(ev.target.value.trim().slice(0, 32))}
+              placeholder="比拼码，例如 CLASS-2026-A 或任意文字"
+              className="bg-slate-50 border-slate-300 text-slate-800 placeholder:text-slate-400"
+            />
+            {tourney && (
+              <p className="text-xs text-indigo-600 mt-2">
+                🎲 本局随机种子由「{tourney}」生成——同一个码，同一局人生。通关后记得把战报分享给对手。
+              </p>
+            )}
+            <p className="text-xs text-slate-400 mt-2">
+              📋 成绩榜（年报页）：<a className="text-indigo-500 underline" href="./board.html" target="_blank" rel="noreferrer">打开 board.html 查看比拼年报</a>（支持 ?seed=比拼码 直达）
+            </p>
+          </CardContent>
+        </Card>
+
         {savedRun && onContinue && (
           <Button
             className="w-full text-lg py-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500"
@@ -271,7 +300,7 @@ export default function CharacterCreation({ onStart, onContinue }: Props) {
 
         <Button
           className="w-full text-lg py-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500"
-          onClick={() => onStart(name, gender, effRegionId, effIndustryId, { difficulty, cofounderId: cofounderId || undefined, scenarioId: scenarioId || undefined })}
+          onClick={() => onStart(name, gender, effRegionId, effIndustryId, { difficulty, cofounderId: cofounderId || undefined, scenarioId: scenarioId || undefined, tournamentCode: tourney || undefined })}
         >
           🚀 开始创业（初始资金 {region.currency}{effCash} 万 · {industry.name} · {region.city}{scenario ? ` · 🎬 ${scenario.title}` : ""}{cofounder ? ` · 🤝 ${cofounder.name}` : ""}{difficulty !== "standard" ? ` · ${difficulty === "easy" ? "🎓 教学" : "🔥 真实模式"}` : ""}）
         </Button>

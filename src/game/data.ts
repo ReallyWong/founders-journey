@@ -182,6 +182,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 1.1,
     fundingAppeal: 1.5,
     regRisk: 0.05,
+    mktEff: 0.14,
     mechanic: "☁️ 用户超 500 后每月产生云账单——规模越大越贵",
   },
   {
@@ -195,6 +196,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 0.7,
     fundingAppeal: 0.8,
     regRisk: 0.15,
+    mktEff: 0.16,
     mechanic: "📦 用户超 300 后每月物流仓储费随单量增长",
   },
   {
@@ -208,6 +210,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 1.2,
     fundingAppeal: 1.2,
     regRisk: 0.4,
+    mktEff: 0.12,
     mechanic: "💳 监管风险最高；拿牌照后有每月固定合规开销",
   },
   {
@@ -221,6 +224,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 0.9,
     fundingAppeal: 1.0,
     regRisk: 0.1,
+    mktEff: 0.20,
     mechanic: "☁️ 用户超 500 后每月产生云账单",
   },
   {
@@ -229,12 +233,13 @@ export const INDUSTRIES: Industry[] = [
     icon: "🔧",
     description: "从原型到量产是一道鬼门关。库存会吃掉你所有现金，成功了则是硬件的护城河。（起步资金更高，但烧钱也更猛）",
     startCash: 30,
-    baseBurn: 4.5,
-    baseUsers: 80,
+    baseBurn: 4.2,
+    baseUsers: 110,
     revenuePerUser: 0.05,
     productDifficulty: 1.4,
     fundingAppeal: 0.9,
     regRisk: 0.1,
+    mktEff: 0.11,
     mechanic: "🏭 起步 30 万；每月 30% 营收被备货占款",
   },
   {
@@ -248,6 +253,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 1.0,
     fundingAppeal: 1.0,
     regRisk: 0.3,
+    mktEff: 0.15,
     mechanic: "🎮 研发预算 ≥30% 才能维持内容产能，否则玩家持续流失",
   },
   {
@@ -261,6 +267,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 0.6,
     fundingAppeal: 0.6,
     regRisk: 0.05,
+    mktEff: 0.10,
     mechanic: "🍜 现金流扎实、慢热抗造；资本不追捧但也死得慢",
   },
   {
@@ -274,6 +281,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 0.8,
     fundingAppeal: 0.5,
     regRisk: 0.05,
+    mktEff: 0.06,
     mechanic: "😇 项目少而精、单笔回报惊人；初始资金 120 万",
     locked: true,
     startCash: 120,
@@ -289,6 +297,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 1.5,
     fundingAppeal: 0.9,
     regRisk: 0.3,
+    mktEff: 0.12,
     mechanic: "⚡ 客单价高但开发极慢（难度 1.5×）；政策与补贴事件多发",
   },
   {
@@ -302,6 +311,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 1.6,
     fundingAppeal: 1.3,
     regRisk: 0.45,
+    mktEff: 0.10,
     mechanic: "💊 烧钱最猛、开发最难（1.6×）；单用户价值最高，熬出来就是印钞机",
   },
   {
@@ -315,6 +325,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 0.9,
     fundingAppeal: 0.9,
     regRisk: 0.2,
+    mktEff: 0.18,
     mechanic: "🎬 用户基数大爆发力强；收入波动剧烈，靠作品命中率吃饭",
   },
   {
@@ -328,6 +339,7 @@ export const INDUSTRIES: Industry[] = [
     productDifficulty: 1.0,
     fundingAppeal: 0.3,
     regRisk: 0.1,
+    mktEff: 0.09,
     locked: true,
     startCash: 200,
     mechanic: "💼 初始 200 万；「客户」是你投的项目——会不定期带来回报，也会爆雷",
@@ -1966,6 +1978,211 @@ export const EVENTS: GameEvent[] = [
         resultText: "储备订单的毛利只有 3%，还不够付贷款利息。第九个月，银行收走了厂房。回收商拖走设备时，你想起订单爆炸那晚自己说的话：『这生意能再做十年。』——周期的耳光总是来得又快又响。",
         lessonTitle: "创业课 · 不要用杠杆赌周期见底",
         lesson: "2021-2022 年口罩行业大清算：据行业统计，超过一半 2020 年新入场企业在两年内退出，不少负债离场。『需求悬崖』是周期行业的专有名词——当你习惯了 3 块的订单，0.2 元的现实就是深渊。承认周期，是实业家最重要的诚实。",
+      },
+    ],
+  },
+  // ── v1.6-beta：Big Al 债务重组（紧急贷款缠身时的专属抉择）──
+  {
+    id: "debt-restructure", title: "债权人约谈：重组还是清算", weight: 0, once: true,
+    minStage: 2,
+    condition: (s) => (s.loan ?? 0) > 60 && (s.zeroRev ?? 0) >= 3,
+    scene:
+      "紧急贷款方把你叫进了一间没有窗户的会议室。桌上摊着你公司的现金流预测：连续多个月收入近零，贷款本金滚到了危险线。对方给出了三个方案，但每一个都带着刺。「我们不想清盘，」对方说，「清盘对我们也是损失。但你得证明你还想活。」",
+    choices: [
+      {
+        id: "negotiate-cut", text: "谈判砍债：一次性拿出大部分现金，换取本金打折", condition: (s) => s.cash > 5,
+        effects: { loanMult: 0.55, cashMult: 0.7, reputation: -6, morale: -5 },
+        resultText: "你把账上七成的现金拍在桌上，换回了 45% 的本金减免。走出大楼时天在下雨，但公司是你的了——连同那份用血汗换来的、更薄的债务表。",
+        lessonTitle: "创业课 · 债务重组的艺术",
+        lesson: "贾跃亭与乐视的反面教材、通用汽车 2009 年破产保护后重生：债权人只要相信你有恢复偿付的能力，就愿意「以时间换空间」。砍债的本质是让对方相信「你活着比清盘值钱」。代价是信用记录——短期内没有银行会再理你。",
+      },
+      {
+        id: "new-for-old", text: "借新还旧：找过桥机构再借一笔，先堵住这个窟窿",
+        effects: { loanMult: 1.15, loan: 20, flag: "toxic-terms", morale: -8 },
+        resultText: "新贷款到账那天，对方代表笑着说「合作愉快」。你没笑。你知道自己签的是一份『毒丸』条款——下一轮融资时，这笔钱的清算优先权会让所有新投资人皱眉。但今晚，至少能发工资。",
+        lessonTitle: "创业课 · 毒丸条款",
+        lesson: "优先清算权、对赌回购、可转债高利贷——救急的钱往往附带最狠的条款。硅谷银行暴雷前夜，多少初创企业的现金一夜冻结。过桥资金的核心问题从来不是利率，而是它在你资本结构里埋下的那颗雷。",
+      },
+      {
+        id: "tough-it-out", text: "硬扛：不重组，慢慢还",
+        effects: { loanMult: 1.05, morale: -10, health: -8 },
+        resultText: "你拒绝了所有方案，选择正面硬刚复利。团队看着你眼里的血丝，没人说话。你知道这个决定意味着什么：接下来每个月，利息都会先一步吃掉利润。",
+        lessonTitle: "创业课 · 复利是你的敌人",
+        lesson: "年化 34% 的复利意味着债务每两年翻一倍。巴菲特说复利是世界第八大奇迹——但对负债者，它是绞索，每个月收紧一圈。硬扛成立的前提是收入曲线即将抬头，否则只是延长痛苦。",
+      },
+    ],
+  },
+  // ── v1.6-beta：地狱难度 · 中国特别版系统性风险（全部类型化化名，不影射真实案件）──
+  {
+    id: "hell-sasac", title: "国资监管新规征求意见", hellOnly: true, weight: 4, minStage: 3,
+    scene:
+      "某部委发布征求意见稿：你所在的行业若涉及数据或关键资源，控股股东结构可能面临新的穿透式审查。行业协会连夜开会，大家口径一致——「监管是为了行业更健康」。但会议室散场后，每个创始人都在打同一个电话：问律师。",
+    choices: [
+      {
+        id: "proactive-filing", text: "主动申报、配合整改（花钱消灾）",
+        effects: { cash: -18, reputation: 6 },
+        resultText: "律师团队驻场两周，把股权结构和数据流程全部梳理了一遍。钱花得心疼，但监管沟通会上，你是唯一一家材料齐全的——态度本身就是护身符。",
+        lessonTitle: "创业课 · 监管是环境变量，不是黑天鹅",
+        lesson: "教培、游戏版号、互联网平台反垄断——系统性监管从不针对某一家公司，它是整个经济体的呼吸节律。成熟创始人的做法是：把合规当成本中心提前布局，而不是当灾难事后补救。",
+      },
+      {
+        id: "wait-see", text: "观望：等细则落地再说",
+        effects: { reputation: -8, loan: 15, morale: -5 },
+        resultText: "你选择了等等看。三个月后细则落地，适用条款比征求意见稿更严。因为被动整改，银行收紧了你的授信，紧急贷款补上了缺口。省下的律师费，变成了更贵的代价。",
+        lessonTitle: "创业课 · 观望是最贵的选项",
+        lesson: "政策窗口期里，早表态者获得「整改样板」身份（甚至参与细则座谈），观望者只能被动接受。滴滴上市后的网络安全审查、蚂蚁的暂缓——监管环境里，信息和时间就是护城河。",
+      },
+    ],
+  },
+  {
+    id: "hell-detention", title: "核心高管被留置协助调查", hellOnly: true, weight: 3, minStage: 3, once: true,
+    condition: (s) => s.team >= 4,
+    scene:
+      "凌晨两点，你的 COO 被监委带走协助调查——他上一家公司的旧案牵到了他。凌晨四点，投资人在群里问：公司运营是否受实质影响？凌晨五点，你盯着天花板想：这个月的关键客户拜访，谁来顶？",
+    choices: [
+      {
+        id: "open-communication", text: "对内坦诚+对外统一口径，自己顶上关键岗位",
+        effects: { cash: -8, morale: -4, reputation: 4, team: -1 },
+        resultText: "你召开了全员会：不隐瞒、不猜测、只讲工作安排。你自己接管了 COO 的全部客户。两周后 COO 配合完调查平安回来——他在留置室外看到你的排班表，眼圈红了。",
+        lessonTitle: "创业课 · 危机时刻，创始人就是首席沟通官",
+        lesson: "新东方在双减后体面退场、海底捞面对食品安全舆情的 24 小时回应——危机公关的第一原则是速度+坦诚。高管个人风险与公司风险必须隔离：关键岗位要有 AB 角，客户关系的备份是组织建设的一部分。",
+      },
+      {
+        id: "deny-everything", text: "对外称「正常休假」，掩盖过去",
+        effects: { reputation: -15, morale: -10, team: -1 },
+        resultText: "纸包不住火。员工从新闻里看到消息的那刻，信任崩塌比股价下跌更快。两位骨干一周内提了离职——他们不是怕公司出事，是怕创始人说谎。",
+        lessonTitle: "创业课 · 信任是唯一的货币",
+        lesson: "安然公司倒掉不是因为做假账的技术差，而是因为说谎让每一次真话都变廉价。团队能接受公司倒霉，不能接受被骗。",
+      },
+    ],
+  },
+  {
+    id: "hell-tax-audit", title: "税务稽查通知书", hellOnly: true, weight: 4, minStage: 2,
+    scene:
+      "税务局发来稽查通知：公司成立以来的进项抵扣和个人所得税申报进入抽查范围。你的财务顾问小声说：早期为了省现金流，有几笔居间费走了个人账户……",
+    choices: [
+      {
+        id: "full-compliance", text: "全面自查补税+滞纳金，一次清账",
+        effects: { cashMult: 0.85, reputation: 5 },
+        resultText: "补税加滞纳金吞掉了账上 15% 的现金，但换来了完税证明和一份干净的审计底稿。后来 Pre-IPO 尽调时，这份底稿帮你省下了两个月的解释时间。",
+        lessonTitle: "创业课 · 税务合规是融资的隐形通行证",
+        lesson: "金税四期下，个人账户收付款、虚开发票几乎无所遁形。补税的现金痛苦是一次性的，税务瑕疵在融资尽调里暴露的代价是致命的——VC 的合规清单上，税务是红线第一条。",
+      },
+      {
+        id: "hope-luck", text: "赌抽查抽不到实质问题，按兵不动",
+        effects: { cash: -25, reputation: -12, morale: -6 },
+        resultText: "稽查组查了三个月。那几笔居间费被认定为偷逃税款，补税、罚款、滞纳金三件套齐活，还登上了税务公告的「典型通报」。品牌合作方打来电话的语气都变了。",
+        lessonTitle: "创业课 · 在金税系统面前没有侥幸",
+        lesson: "范冰冰案、薇娅案：税务罚单最狠的部分从来不是税款本身，而是滞纳金、罚款和公众信任的叠加损失。早期省钱是本能，省在税务上是自杀。",
+      },
+    ],
+  },
+  {
+    id: "hell-antitrust", title: "涉嫌垄断的举报函", hellOnly: true, weight: 3, minStage: 4,
+    condition: (s) => s.users > 3000 || s.mrr > 80,
+    scene:
+      "竞争对手向市场监管部门递交举报函：指责你利用「二选一」协议和排他性条款封锁渠道。律师看完举报材料说：「条款确实签得激进，但行业里都这么干。」——问题是，现在行业龙头已经被罚过了，「都这么干」不再是辩护词。",
+    choices: [
+      {
+        id: "self-rectify", text: "主动终止排他条款+发布合规承诺",
+        effects: { cash: -12, usersPct: -8, reputation: 8 },
+        resultText: "你主动撕掉了七份排他协议，短期渠道确实松动了，但监管部门把你列入了「主动整改名单」。竞争对手的小动作反而让你看清了哪些渠道是真正的护城河。",
+        lessonTitle: "创业课 · 规模是合规的闹钟",
+        lesson: "阿里 182 亿罚单确立的原则：市占率超过阈值后，「行业惯例」不再适用。创新可以野蛮生长，规模化之后必须「穿越回」规则之内。真正的护城河从不是排他条款，是用户离不开你。",
+      },
+      {
+        id: "fight-back", text: "正面硬刚：发声明指责恶意举报",
+        effects: { cash: -20, reputation: -10, morale: -5 },
+        resultText: "声明发出当天上了热搜——但热搜词条是「#某公司回应垄断举报#」。监管约谈如期而至，公司被迫在媒体围观下整改，比安静认罚狼狈十倍。",
+        lessonTitle: "创业课 · 与监管对轰是最差策略",
+        lesson: "与监管博弈的正确姿势是「律师对律师、制度对制度」，把争议留在专业场域。公开对抗只会把行政处罚升级成立法关注——后者的代价高两个数量级。",
+      },
+    ],
+  },
+  {
+    id: "hell-data-review", title: "数据安全现场检查", hellOnly: true, weight: 4, minStage: 3,
+    condition: (s) => ["ai", "fintech", "consumer", "game"].includes(s.industry.id),
+    scene:
+      "网信办会同专家组进驻公司，对数据存储、用户授权、跨境传输做现场检查。技术负责人额头冒汗：早期为了快速迭代，用户同意书用的是模板，埋点权限也超了范围……",
+    choices: [
+      {
+        id: "full-remediation", text: "借检查全面整改：下架冗余埋点+重做授权流程",
+        effects: { cash: -15, product: -5, reputation: 6 },
+        resultText: "整改让产品迭代慢了两个月，但检查组在报告里写下了「整改态度积极」。更重要的是，重做授权流程时你砍掉了 60% 的无效埋点——产品反而更清爽了。",
+        lessonTitle: "创业课 · 数据合规倒逼产品瘦身",
+        lesson: "GDPR 罚亚马逊 7.46 亿欧元、国内某出行平台 80.26 亿罚单——数据合规不是成本，是底线能力。好消息是合规整改往往顺带完成「技术债大扫除」，短期变慢，长期更快。",
+      },
+      {
+        id: "minimal-patch", text: "只做表面功夫：改改文案应付检查",
+        effects: { reputation: -10, usersPct: -5, loan: 10 },
+        resultText: "检查组离开三个月后，一篇用户数据泄露报道把你顶上了风口浪尖。监管回头看，公司被列入重点名单——合作方开始要求额外的数据安全保证金，紧急贷款又一次填坑。",
+        lessonTitle: "创业课 · 表面合规是最大的不划算",
+        lesson: "应付式合规的成本是复合的：监管信任、合作方信任、用户信任同时折价。每一次「回头查」的代价都是首次整改的 3-5 倍。",
+      },
+    ],
+  },
+  {
+    id: "hell-social-insurance", title: "社保稽核与劳动仲裁", hellOnly: true, weight: 4, minStage: 2,
+    condition: (s) => s.team >= 5,
+    scene:
+      "一位离职员工申请劳动仲裁：加班费、未休年假、社保未足额缴纳——三项打包索赔。更麻烦的是，他贴出了全员工资条截图，公司「按最低基数缴纳社保」的潜规则被摊在了阳光下。在职员工的目光开始闪躲。",
+    choices: [
+      {
+        id: "settle-reform", text: "调解赔偿+全员社保基数合规化",
+        effects: { cashMult: 0.88, morale: 8, reputation: 4 },
+        resultText: "调解金加全员社保补缴，账上现金骤减。但一周后，三位老员工主动找你谈长期规划——「跟着你，不怕后方起火」。你这才明白：合规是最贵的福利，也是最便宜的留人手段。",
+        lessonTitle: "创业课 · 劳动合规是隐性薪酬",
+        lesson: "按最低基数缴社保是 90% 初创的潜规则，但它埋着两颗雷：员工仲裁（一告一个准）和核心人才流失（看得懂的员工会用脚投票）。足额缴纳的本质是把「不信任成本」换成「组织凝聚力」。",
+      },
+      {
+        id: "litigate", text: "奉陪到底：请律师打仲裁",
+        effects: { cash: -15, morale: -12, reputation: -6 },
+        resultText: "仲裁庭上你赢了程序，输了人心。判决书公开的当月，两位核心工程师入职了大厂——「创业公司连社保都算计」成了这个行业小圈子里的一句点评。",
+        lessonTitle: "创业课 · 赢了官司，输了组织",
+        lesson: "劳动争议里，法律成本只是冰山一角，真正的成本是剩余员工的心理账户。劳动仲裁记录是公开的，下轮融资做尽调时，HR 背调会原样呈现。",
+      },
+    ],
+  },
+  {
+    id: "hell-abroad-freeze", title: "异地协查：账户被冻结", hellOnly: true, weight: 2, minStage: 3, once: true,
+    scene:
+      "财务突然报警：公司基本户被某地公安机关冻结——一笔客户的回款牵涉远方的电诈案件，协查文书直接锁死了账户。工资日还有 9 天，账户里躺着全公司下季度的口粮。律师说：解冻流程走下来，乐观也要 2-3 个月。",
+    choices: [
+      {
+        id: "new-account", text: "紧急开立一般户+法人代表个人垫付工资",
+        effects: { cash: -10, loan: 20, morale: -3 },
+        resultText: "你用个人信用借了笔过桥资金开了一般户，工资准时到账。两个月后案件澄清、账户解冻，你在全员会上只说了三个字：「没事了。」但你自己知道，那 60 天里你白了多少头发。",
+        lessonTitle: "创业课 · 账户冗余与现金流隔离",
+        lesson: "企业账户被冻结在实践中并不罕见（涉诉、协查、税务保全）。成熟财务的标配：基本户+一般户双轨、工资专户隔离、法人应急授信。现金流管理的最高层级，是为「系统级意外」预留逃生舱。",
+      },
+      {
+        id: "wait-thaw", text: "等解冻，跟员工解释延后发薪",
+        effects: { morale: -18, team: -2, reputation: -5 },
+        resultText: "工资迟发两周，两位员工贷款逾期的消息在群里炸开。虽然账户解冻后你补发了全部薪水加利息，但离职申请还是来了三份——其中一份来自你最不想失去的人。",
+        lessonTitle: "创业课 · 发薪日是信任的计量器",
+        lesson: "创业可以失败，工资不能拖欠——这是用无数公司验证过的组织铁律。员工个人财务经不起「公司不确定性」的传导，一次延薪摧毁的凝聚力，三次团建都补不回来。",
+      },
+    ],
+  },
+  {
+    id: "hell-industry-crackdown", title: "行业专项整治风暴", hellOnly: true, weight: 3, minStage: 3, once: true,
+    condition: (s) => s.industry.regRisk >= 0.2,
+    scene:
+      "监管部门宣布对你所在行业开展为期半年的专项整治：牌照复核、存量业务清理、新批项目暂停。行业协会的群里死一般寂静——上一次这种规模的整治，行业消失了三分之一的公司。",
+    choices: [
+      {
+        id: "pivot-premium", text: "主动转型：砍低毛利业务，押注合规的高端线",
+        effects: { cash: -20, product: -10, valuationPct: 10, reputation: 5 },
+        resultText: "你在三个月内砍掉了 40% 的收入，把资源全部押向合规门槛更高的高端业务线。同行在寒冬里倒下时，你拿到了稀缺的资质牌照——风暴过后，沙滩上的幸存者屈指可数，而你握着铲子。",
+        lessonTitle: "创业课 · 监管风暴是行业洗牌加速器",
+        lesson: "P2P 清退后活下来的是持牌机构，教培转型后跑通的是素质教育和直播带货。整治从来消灭的是「伪需求+擦边球」，真正的需求只会在规范后以更贵的价格重新出现。",
+      },
+      {
+        id: "hold-position", text: "坚守：赌整治雷声大雨点小",
+        effects: { usersPct: -30, mrrPct: -25, cash: -15, morale: -10 },
+        resultText: "整治不是雷声，是冰雹。牌照复核卡住、渠道全面收紧，收入曲线像断了线的风筝。你熬到了风暴结束，但公司已经瘦脱相——估值膝盖斩，投资人只想谈回购。",
+        lessonTitle: "创业课 · 与监管周期对赌没有赢家",
+        lesson: "「监管总会放松」在数学上是成立的，但在现金流上往往不成立——公司活不到那一天。活下去的前提是假设风暴持续两年，并做好在风暴最猛时转型的心理准备。",
       },
     ],
   },
