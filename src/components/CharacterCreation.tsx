@@ -12,6 +12,7 @@ interface StartOptions {
   cofounderId?: string;
   scenarioId?: string;
   tournamentCode?: string;
+  deepInvestors?: boolean;
 }
 
 interface Props {
@@ -37,6 +38,7 @@ export default function CharacterCreation({ onStart, onContinue }: Props) {
   const [cofounderId, setCofounderId] = useState<string>("");
   const [scenarioId, setScenarioId] = useState<string>("");
   const [tourney, setTourney] = useState<string>("");
+  const [deepInv, setDeepInv] = useState<boolean>(false);
   const [showAll, setShowAll] = useState(false);
   const [angelUnlocked] = useState(() => {
     try { return localStorage.getItem("fj_angel_unlocked") === "1"; } catch { return false; }
@@ -289,6 +291,21 @@ export default function CharacterCreation({ onStart, onContinue }: Props) {
           </CardContent>
         </Card>
 
+        {/* v1.7：深度机构模式 */}
+        <Card className="bg-white border-slate-200 shadow-sm">
+          <CardContent className="py-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={deepInv} onChange={(e) => setDeepInv(e.target.checked)} className="mt-1 w-4 h-4 accent-indigo-600" />
+              <span>
+                <span className="text-sm font-semibold text-slate-800">🏦 深度机构模式（推荐给老玩家）</span>
+                <span className="block text-xs text-slate-500 mt-1 leading-snug">
+                  开启后，投资机构拥有记忆：拒绝过你的机构不会再出现，投过你的机构有 50% 概率带着 1.25 倍支票回来跟投（胜率 +12%）。融资从「抽卡」变成「经营关系」。
+                </span>
+              </span>
+            </label>
+          </CardContent>
+        </Card>
+
         {savedRun && onContinue && (
           <Button
             className="w-full text-lg py-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500"
@@ -300,7 +317,7 @@ export default function CharacterCreation({ onStart, onContinue }: Props) {
 
         <Button
           className="w-full text-lg py-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500"
-          onClick={() => onStart(name, gender, effRegionId, effIndustryId, { difficulty, cofounderId: cofounderId || undefined, scenarioId: scenarioId || undefined, tournamentCode: tourney || undefined })}
+          onClick={() => onStart(name, gender, effRegionId, effIndustryId, { difficulty, cofounderId: cofounderId || undefined, scenarioId: scenarioId || undefined, tournamentCode: tourney || undefined, deepInvestors: deepInv || undefined })}
         >
           🚀 开始创业（初始资金 {region.currency}{effCash} 万 · {industry.name} · {region.city}{scenario ? ` · 🎬 ${scenario.title}` : ""}{cofounder ? ` · 🤝 ${cofounder.name}` : ""}{difficulty !== "standard" ? ` · ${difficulty === "easy" ? "🎓 教学" : "🔥 真实模式"}` : ""}）
         </Button>

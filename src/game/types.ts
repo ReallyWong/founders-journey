@@ -179,11 +179,16 @@ export interface GameState {
   ending?: Ending;
   // 融资历史
   raised: { round: string; amount: number; dilution: number; investor: string }[];
-  // v1.5.1：规模化阶段的多轮次融资进度（0=待B轮 1=待C轮 2=已完成）
+  // v1.5.1：规模化阶段的多轮次融资进度（0=待B轮 1=待C轮 2=待D轮 3=待E轮 4=已完成）
   scaleRound?: number;
   // v1.6-alpha：二次路演（融资失败后冷却期结束可再战，含估值惩罚）
-  pitchRetry?: { round: "seed" | "A" | "B" | "C"; at: number };
+  pitchRetry?: { round: "seed" | "A" | "B" | "C" | "D" | "E"; at: number };
   pitchFailCount?: number;
+  // v1.7：资本寒冬窗口 [开始月, 结束月]（newGame 预生成 1-2 段）
+  winterWindows?: [number, number][];
+  // v1.7：深度机构模式——投资机构关系记忆（机构名 → 投过/拒过）
+  deepInvestors?: boolean;
+  investorRelations?: Record<string, "invested" | "rejected">;
   // v1.6-beta：可播种随机源 + 比拼码
   rngSeed: number;
   tournamentCode?: string;
@@ -222,7 +227,7 @@ export interface PendingDecision {
   investor?: Investor;
   candidate?: Candidate;
   candidates?: [Candidate, Candidate];
-  round?: "seed" | "A" | "B" | "C"; // 融资轮次（pitch 专用）
+  round?: "seed" | "A" | "B" | "C" | "D" | "E"; // 融资轮次（pitch 专用）
 }
 
 export interface Ending {

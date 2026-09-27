@@ -64,6 +64,7 @@ export interface NewGameOptions {
   scenarioId?: string;
   seed?: number; // v1.6-beta：比拼模式由服务端下发，同 seed = 同一随机序列
   tournamentCode?: string;
+  deepInvestors?: boolean; // v1.7：深度机构模式（机构有记忆、跟投、黑名单）
 }
 
 export function newGame(name: string, gender: Gender, regionId: string, industryId: string, opts: NewGameOptions = {}): GameState {
@@ -125,7 +126,20 @@ export function newGame(name: string, gender: Gender, regionId: string, industry
     tournamentCode: opts.tournamentCode,
     awareness: 5,
     accessibility: 10,
+    deepInvestors: opts.deepInvestors ?? false,
+    investorRelations: {},
   };
+  // v1.7：资本寒冬——每局预生成 1-2 段窗口（融资胜率骤降、谈判空间关闭）
+  {
+    const winters: [number, number][] = [];
+    const first = 7 + randInt(0, 10);
+    winters.push([first, first + 3 + randInt(0, 3)]);
+    if (nextRandom() < 0.5) {
+      const second = first + 14 + randInt(0, 12);
+      winters.push([second, second + 3 + randInt(0, 4)]);
+    }
+    state.winterWindows = winters;
+  }
   // 🥚 老兵光环提示
   if (veteran) {
     state.log.push({ month: 0, text: "🥚 彩蛋 · 连续创业者光环：这是你第 3+ 次站上牌桌。经验让你心态更稳（初始健康 95、声望 +8）。老兵不死，只是换个赛道继续折腾。", type: "good" });
@@ -241,12 +255,20 @@ export function advanceMonth(s: GameState): GameState {
   n.season = MONTH_NAMES[n.month % 12];
   n.eventCooldown = Math.max(0, n.eventCooldown - 1);
 
+  // v1.7：资本寒冬进出提示
+  for (const [a, b] of n.winterWindows ?? []) {
+    if (n.month === a) n = log(n, "🥶 资本寒冬降临：机构捂紧口袋、裁员新闻刷屏——接下来的几个月，融资胜率大幅下降，谈判空间几乎关闭。活下来就是胜利。", "bad");
+    if (n.month === b + 1) n = log(n, "🌤️ 寒冬过去了。幸存的公司会发现：市场上的钱变多了，竞品却变少了——危机是强者的并购季。", "good");
+  }
+
   const region = n.region;
   const mod = region.modifiers;
 
   // ── 收入（v1.6-beta：知名度/渠道双存量模型，借鉴 Capstone 感知漏斗）──
   // 知名度：营销预算堆出来，每月漏水（停止投放就被人遗忘）；教学难度漏水减半
-  const mktEff = n.industry.mktEff ?? 0.12;
+  // v1.7：「再养一年」的余热——回到 scale 阶段后 6 个月内预算效率 ×1.5
+  const boost = n.tags.includes("hold-boost") && n.stage === "scale" ? 1.5 : 1;
+  const mktEff = (n.industry.mktEff ?? 0.12) * boost;
   const leak = n.difficulty === "easy" ? 0.05 : 0.10;
   n.awareness = clamp(n.awareness + (n.budget.marketing / 100) * mktEff * 100 * (0.8 + 0.4 * nextRandom()) - n.awareness * leak, 0, 100);
   // 渠道可及性：销售预算铺出来，漏水较慢（渠道资产更持久，但也会老化）
@@ -301,7 +323,7 @@ export function advanceMonth(s: GameState): GameState {
   // ── 产品进度 ──
   if ((n.stage === "mvp" || n.stage === "growth") && n.product < 100) {
     const cfTechMul = n.cofounder?.trait === "tech" ? 1.2 : 1;
-    n.product = clamp(n.product + (n.budget.rd / 100) * 9 * (1 / n.industry.productDifficulty) * cfTechMul, 0, 100);
+    n.product = clamp(n.product + (n.budget.rd / 100) * 9 * (1 / n.industry.productDifficulty) * cfTechMul * boost, 0, 100);
   }
 
   // ── 行业特性：游戏内容产能（更新跟不上，玩家就流失）──
@@ -404,24 +426,31 @@ function advanceStage(s: GameState): GameState {
     }
     case "scale": {
       const sr = n.scaleRound ?? 0;
-      // v1.6-alpha：B/C 轮被拒后不自动重复触发，改由统一的二次路演机制调度（含估值惩罚）
-      const noRetryPending = (rd: "B" | "C") => n.pitchRetry?.round !== rd;
+      // v1.6-alpha：被拒后不自动重复触发，改由统一的二次路演机制调度（含估值惩罚）；v1.7 扩展至 D/E 轮
+      const noRetryPending = (rd: "B" | "C" | "D" | "E") => n.pitchRetry?.round !== rd;
       if (sr === 0 && noRetryPending("B") && n.mrr >= 60 && n.month > 14) {
         n = log(n, "📈 增长曲线进入了机构视野：B 轮基金带着更厚的支票簿找上门了。（MRR≥60 · 第 15 个月后）", "system");
         n.pendingDecision = pitchDecision(n, "B");
       } else if (sr === 1 && noRetryPending("C") && n.mrr >= 100 && n.month > 22) {
-        n = log(n, "🏛️ 准独角兽的牌桌：C 轮（Pre-IPO）机构带着上市资源与承销关系找上门。（MRR≥100 · 第 23 个月后）", "system");
+        n = log(n, "🏛️ 准独角兽的牌桌：C 轮机构带着上市资源找上门。（MRR≥100 · 第 23 个月后）", "system");
         n.pendingDecision = pitchDecision(n, "C");
-      } else if (sr >= 2 && n.valuation >= 2600 && n.mrr >= 120) {
-        // v1.5.1：上市辅导前必须走完 B/C 轮——真实公司上市前都经历多轮融资
+      } else if (sr === 2 && noRetryPending("D") && n.mrr >= 150 && n.month > 30) {
+        n = log(n, "🌐 独角兽俱乐部：D 轮基金带着「生态」故事和更长的对赌条款找上门。（MRR≥150 · 第 31 个月后）", "system");
+        n.pendingDecision = pitchDecision(n, "D");
+      } else if (sr === 3 && noRetryPending("E") && n.valuation >= 5000 && n.month > 38) {
+        n = log(n, "👑 Pre-IPO 牌桌：E 轮是上市前最后一轮机构钱，条款密集到律师都要加班。（估值≥5000 万 · 第 39 个月后）", "system");
+        n.pendingDecision = pitchDecision(n, "E");
+      } else if (sr >= 4 && n.valuation >= 2600 && n.mrr >= 120) {
+        // v1.7：上市辅导前必须走完 B/C/D/E 轮——真实公司上市前都经历多轮融资
         n.stage = "endgame";
-        n = log(n, "🏛️ C 轮交割完成，你收到了投行的上市辅导邀约——敲钟的梦想触手可及。", "good");
+        n.tags = n.tags.filter((t) => t !== "hold-boost");
+        n = log(n, "🏛️ E 轮交割完成，你收到了三家投行递来的上市辅导邀约——敲钟的梦想触手可及。", "good");
         n.pendingDecision = ipoDecision(n);
       }
-      // v1.6-alpha：B/C 轮二次路演（冷却期满自动再战）
+      // v1.6-alpha：二次路演（冷却期满自动再战，v1.7 扩展至 D/E）
       const rb = n.pitchRetry;
       if (!n.pendingDecision && rb && n.month >= rb.at &&
-          ((rb.round === "B" && sr === 0) || (rb.round === "C" && sr === 1))) {
+          ((rb.round === "B" && sr === 0) || (rb.round === "C" && sr === 1) || (rb.round === "D" && sr === 2) || (rb.round === "E" && sr === 3))) {
         n = { ...n, pitchRetry: undefined };
         n = log(n, `🔄 三个月冷却期结束。${rb.round} 轮，再战。`, "system");
         n.pendingDecision = pitchDecision(n, rb.round, true);
@@ -459,15 +488,27 @@ export function completeInterview(s: GameState, score: number): GameState {
 
 // ─── 融资路演 ───────────────────────────────────────────────────────────────
 // 多轮次融资阶梯：种子 → A → B → C（v1.5.1）。每轮金额与稀释递增，成功后驱动团队扩张。
-export type Round = "seed" | "A" | "B" | "C";
+// 多轮次融资阶梯：种子 → A → B → C → D → E（v1.7）。每轮金额与稀释递增，成功后驱动团队扩张。
+export type Round = "seed" | "A" | "B" | "C" | "D" | "E";
 
-const ROUND_NAMES: Record<Round, string> = { seed: "种子轮", A: "A轮", B: "B轮", C: "C轮" };
-const ROUND_TITLES: Record<Round, string> = { seed: "🌱 种子轮路演", A: "📈 A 轮路演", B: "🚀 B 轮路演", C: "🏭 C 轮路演" };
+const ROUND_NAMES: Record<Round, string> = { seed: "种子轮", A: "A轮", B: "B轮", C: "C轮", D: "D轮", E: "E轮" };
+const ROUND_TITLES: Record<Round, string> = { seed: "🌱 种子轮路演", A: "📈 A 轮路演", B: "🚀 B 轮路演", C: "🏭 C 轮路演", D: "🌐 D 轮路演", E: "👑 E 轮（Pre-IPO）路演" };
 // 各轮金额区间（万）与谈判后的稀释系数
-const ROUND_CHECKS: Record<Round, [number, number]> = { seed: [0, 0], A: [500, 1500], B: [1000, 3000], C: [2500, 6000] };
+const ROUND_CHECKS: Record<Round, [number, number]> = { seed: [0, 0], A: [500, 1500], B: [1000, 3000], C: [2500, 6000], D: [4000, 9000], E: [6000, 15000] };
+
+// v1.7：资本寒冬判定
+function isWinter(s: GameState): boolean {
+  return (s.winterWindows ?? []).some(([a, b]) => s.month >= a && s.month <= b);
+}
 
 function pitchDecision(s: GameState, round: Round, isRetry = false): PendingDecision {
-  const investor = pick(INVESTORS);
+  // v1.7 深度机构模式：拒绝过你的机构不会再上桌（黑名单）；投过你的机构优先来跟投
+  const relations = s.deepInvestors ? (s.investorRelations ?? {}) : {};
+  const blacklisted = new Set(Object.entries(relations).filter(([, v]) => v === "rejected").map(([k]) => k));
+  const pool = INVESTORS.filter((inv) => !blacklisted.has(inv.name));
+  const followOn = pool.find((inv) => relations[inv.name] === "invested");
+  const investor = followOn && nextRandom() < 0.5 ? followOn : pick(pool.length ? pool : INVESTORS);
+  const isFollowOn = relations[investor.name] === "invested";
   const isSeed = round === "seed";
   let amount: number;
   let ask: number;
@@ -479,6 +520,8 @@ function pitchDecision(s: GameState, round: Round, isRetry = false): PendingDeci
     // 轮次越往后，机构占比要求略降但金额更大
     ask = clamp(round === "A" ? Math.max(10, investor.ask - 5) : round === "B" ? clamp(investor.ask - 6, 8, 14) : clamp(investor.ask - 8, 6, 12), 6, 20);
   }
+  // v1.7：跟投的老股东加码信任（金额 +25%）
+  if (isFollowOn) amount = Math.round(amount * 1.25);
   // v1.6-alpha：连续受挫的投资人会要求更多股份（每次失败 +2%，上限 +6%）
   ask = clamp(ask + Math.min(6, (s.pitchFailCount ?? 0) * 2), 6, 25);
   const check: Record<string, number> = {
@@ -496,29 +539,48 @@ function pitchDecision(s: GameState, round: Round, isRetry = false): PendingDeci
   const realismPenalty = (s.difficulty ?? "standard") === "realism" ? -0.05 : 0;
   // v1.6-alpha：连续受挫后更难融——市场闻得到绝望（每次失败 -4% 胜率，下限 10%）
   const failPenalty = Math.min(0.15, (s.pitchFailCount ?? 0) * 0.04);
-  const winProb = clamp(0.35 + realismPenalty + cfBonus + fitScore * 0.5 + (s.tags.includes("backup-investors") ? 0.1 : 0) - failPenalty, 0.1, 0.92);
+  // v1.7：基础胜率 35%→25%（融资本该九死一生）；跟投信任 +12%；基金类隐藏职业募资场景不同，降幅减半
+  const baseWin = (s.industry.id === "vcpe" || s.industry.id === "angel") ? 0.32 : 0.25;
+  const followBonus = isFollowOn ? 0.12 : 0;
+  // v1.7：资本寒冬——投资人捂紧口袋（胜率 −15%）
+  const winter = isWinter(s);
+  const winterPenalty = winter ? 0.15 : 0;
+  const winProb = clamp(baseWin + realismPenalty + cfBonus + followBonus + fitScore * 0.5 + (s.tags.includes("backup-investors") ? 0.1 : 0) - failPenalty - winterPenalty, 0.05, 0.92);
 
   const roll = nextRandom();
   const negRoll = nextRandom();
   const acceptId = roll < winProb ? "accept" : "accept-anyway";
-  const negId = negRoll < winProb * 0.55 ? "negotiate-up" : "negotiate-fail";
+  // v1.7：寒冬里谈判空间几乎关闭（谈判胜率砍半）
+  const negId = negRoll < winProb * (winter ? 0.25 : 0.55) ? "negotiate-up" : "negotiate-fail";
   const acceptText = `接受：${s.region.currency}${amount} 万换 ${ask}%`;
-  const negText = `谈判：同金额但只给 ${Math.round(ask * 0.75)}%（可能谈崩）`;
+  const negText = winter
+    ? `硬谈：同金额但只给 ${Math.round(ask * 0.75)}%（寒冬里谈判大概率谈崩）`
+    : `谈判：同金额但只给 ${Math.round(ask * 0.75)}%（可能谈崩）`;
   const growthHint = round === "B"
     ? "\n\n💼 B 轮的钱主要投向组织扩张：到账后团队预计翻倍，烧钱速度会显著加快。"
     : round === "C"
-      ? "\n\n💼 C 轮是上市前最后一轮机构钱：投后你将开始接受投行、审计、律所的上市辅导尽调。"
-      : "";
+      ? "\n\n💼 C 轮的钱投向供应链与国际化，组织进入大跃进。"
+      : round === "D"
+        ? "\n\n💼 D 轮的钱开始讲「生态」与「第二曲线」——账上趴着大钱，所有人都在等你花。"
+        : round === "E"
+          ? "\n\n💼 E 轮（Pre-IPO）的钱要的是确定性：上市对赌、回购条款、董事会席位，每一条都得谈。"
+          : "";
   // v1.6-alpha：二次路演的开场白（上次被拒的市场记忆）
   const retryScene = isRetry
     ? `上次被${s.pitchFailCount && s.pitchFailCount > 1 ? "第 " + s.pitchFailCount + " 次" : ""}拒后，你花了三个月重整 BP、换了一批投资人名单，还下调了估值预期。这是一次新的路演——对方不知道你的伤疤，但市场记得。\n\n`
     : "";
+  // v1.7：机构关系与寒冬的开场白
+  const relationScene = isFollowOn
+    ? `🤝 ${investor.name} 是你的老股东——「上一轮我赌对了，这一轮我加注。」\n\n`
+    : winter
+      ? `🥶 资本寒冬。${investor.name} 的会议室空了一半，LP 的电话比以往任何时候都多。「不是你不优秀，是大家都没钱了。」\n\n`
+      : "";
 
   return {
     kind: "pitch",
     round,
     title: isRetry ? `${ROUND_TITLES[round]} · 再战` : ROUND_TITLES[round],
-    scene: `${retryScene}${investor.name}（${investor.style}）听完了你的 20 分钟路演。对方最看重「${investor.preference}」。\n\n你的关键数据：MRR ${fmtMoney(s, s.mrr)} · 用户 ${s.users.toLocaleString()} · 产品完成度 ${Math.round(s.product)}% · 团队 ${s.team} 人\n\n对方开口：「我们最多出 ${s.region.currency}${amount} 万，要 ${ask}% 的股份。你可以考虑，但我下周还要见你的两个竞品。」${growthHint}`,
+    scene: `${retryScene}${relationScene}${investor.name}（${investor.style}）听完了你的 20 分钟路演。对方最看重「${investor.preference}」。\n\n你的关键数据：MRR ${fmtMoney(s, s.mrr)} · 用户 ${s.users.toLocaleString()} · 产品完成度 ${Math.round(s.product)}% · 团队 ${s.team} 人\n\n对方开口：「我们最多出 ${s.region.currency}${amount} 万，要 ${ask}% 的股份。你可以考虑，但我下周还要见你的两个竞品。」${growthHint}`,
     investor: { ...investor, checkSize: [amount, amount], ask },
     choices: [
       { id: acceptId, text: acceptText, effects: {}, resultText: "" },
@@ -542,8 +604,10 @@ export function resolvePitch(s: GameState, choiceId: string, investor: NonNullab
       n.morale = clamp(n.morale + 12, 0, 100);
       n.awareness = clamp(n.awareness + 15, 0, 100); // 融资成功自带 PR 效应（TechCrunch 效应）
       n.pitchRetry = undefined;
+      if (n.deepInvestors) n.investorRelations = { ...(n.investorRelations ?? {}), [investor.name]: "invested" };
       n = applyRoundOutcome(n, rd);
     } else {
+      if (n.deepInvestors) n.investorRelations = { ...(n.investorRelations ?? {}), [investor.name]: "rejected" };
       n = log(n, `${investor.name} 婉拒了：「我们再看看。」（你的「${investor.preference}」数据不够打动对方）`, "bad");
       n.morale = clamp(n.morale - 8, 0, 100);
       n.eventCooldown = 2;
@@ -562,6 +626,7 @@ export function resolvePitch(s: GameState, choiceId: string, investor: NonNullab
     n.morale = clamp(n.morale + 15, 0, 100);
     n.awareness = clamp(n.awareness + 15, 0, 100);
     n.pitchRetry = undefined;
+    if (n.deepInvestors) n.investorRelations = { ...(n.investorRelations ?? {}), [investor.name]: "invested" };
     n = applyRoundOutcome(n, rd);
   } else {
     n = log(n, `${investor.name} 脸色冷了下来：「这不是菜市场。」谈判破裂。`, "bad");
@@ -570,6 +635,7 @@ export function resolvePitch(s: GameState, choiceId: string, investor: NonNullab
     // v1.6-alpha：谈判破裂同样可二次路演（冷却 + 估值惩罚）
     n.pitchRetry = { round: rd, at: n.month + 3 };
     n.pitchFailCount = (n.pitchFailCount ?? 0) + 1;
+    if (n.deepInvestors) n.investorRelations = { ...(n.investorRelations ?? {}), [investor.name]: "rejected" };
     n.valuation = Math.max(20, n.valuation * 0.9);
     n = log(n, "📉 谈崩了。3 个月冷却期后可再次路演，但估值预期已下调 10%。", "info");
   }
@@ -607,6 +673,16 @@ function applyRoundOutcome(n: GameState, rd: Round): GameState {
     case "C":
       s.scaleRound = 2;
       growTeam(6, 10);
+      break;
+    case "D":
+      s.scaleRound = 3;
+      growTeam(8, 12);
+      s = log(s, "🌐 D 轮交割：你开始被叫「独角兽」了——但这个称号一半是光环，一半是靶子。", "system");
+      break;
+    case "E":
+      s.scaleRound = 4;
+      growTeam(10, 15);
+      s = log(s, "👑 E 轮（Pre-IPO）交割：投行、审计、律所全部进场，每一张发票都开始昂贵。", "system");
       break;
   }
   return s;
@@ -727,16 +803,53 @@ function maybeTriggerEvent(s: GameState): GameState {
 }
 
 // ─── 终局决策 ───────────────────────────────────────────────────────────────
+// v1.7：三市场 IPO——美股重增长、港股要现金流、A 股要合规盈利；hold 改为加速经营
+const IPO_MARKETS = {
+  us: {
+    name: "🗽 美股（纳斯达克）",
+    req: "重增长：MRR > 100、团队 ≥10、创始人健康 >25；允许亏损上市，但之后要面对做空报告与集体诉讼的风险。",
+    test: (n: GameState) => n.mrr > 100 && n.team >= 10 && n.health > 25 && !n.tags.includes("toxic-terms"),
+    failReason: (n: GameState) => (n.team < 10 ? "「公司治理不健全：" + n.team + " 人的团队撑不起上市公司的运作」" : "「增长故事不够性感」"),
+    fee: 0.08,
+    valMult: 1.15,
+    failFee: 0.06,
+    note: "美股给你的估值最高（×1.15），但上市后每个季度都要对华尔街交卷。",
+  },
+  hk: {
+    name: "🇭🇰 港股（港交所）",
+    req: "重现金流：MRR > 100 且账上现金为正、声望 >-10；流动性折价明显，估值 ×0.85，但审核速度最快。",
+    test: (n: GameState) => n.mrr > 100 && n.cash > 0 && n.reputation > -10 && !n.tags.includes("toxic-terms"),
+    failReason: () => "「持续经营现金流存疑」",
+    fee: 0.06,
+    valMult: 0.85,
+    failFee: 0.05,
+    note: "港股是稳态选择：估值打折，但离你的供应链和用户最近。",
+  },
+  cn: {
+    name: "🇨🇳 A 股（科创板/创业板）",
+    req: "重合规盈利：MRR > 100 且连续健康（无 toxic-terms、声望 >0）、持有 licensed 标签更佳；审核最严，但上市后估值 ×1.3（锁定期 3 年）。",
+    test: (n: GameState) => n.mrr > 100 && n.reputation > 0 && !n.tags.includes("toxic-terms") && n.health > 25,
+    failReason: (n: GameState) => (n.reputation <= 0 ? "「发行人市场声誉存在争议」" : "「持续盈利能力存疑」"),
+    fee: 0.1,
+    valMult: 1.3,
+    failFee: 0.12,
+    note: "A 股估值最高（×1.3）但锁定期 3 年——敲钟那天你依然不能套现，这才是真实的中国资本市场。",
+  },
+} as const;
+type IpoMarket = keyof typeof IPO_MARKETS;
+
 function ipoDecision(s: GameState): PendingDecision {
-  const teamWarn = s.team < 10 ? `\n\n⚠️ 投行尽职调提醒你：上市公司需要健全的组织治理，团队至少 10 人（当前 ${s.team} 人），否则发审环节大概率被质疑「持续经营能力」。` : "";
+  const teamWarn = s.team < 10 ? `\n\n⚠️ 投行尽职调提醒你：上市公司需要健全的组织治理，团队至少 10 人（当前 ${s.team} 人）。` : "";
   return {
     kind: "ipo",
     title: "🏛️ 命运的十字路口",
-    scene: `投行、律所、审计师都到位了。上市申请材料一递，你的公司将接受全世界的审视。上市费用约 ${fmtMoney(s, s.valuation * 0.08)}，且之后每季度都要对华尔街交卷。\n\n当然，你也可以选择另一条路——把公司卖给那个出价 ${fmtMoney(s, s.valuation * 1.6)} 的巨头。${teamWarn}`,
+    scene: `E 轮交割完成，投行、律所、审计师都到位了。现在要选择上市地——这不是选股票代码，是选未来五年你每天要面对谁：华尔街的空头、港股的流动性，还是 A 股的发审委。\n\n当然，你也可以选择另一条路——把公司卖给那个出价 ${fmtMoney(s, s.valuation * 1.6)} 的巨头。${teamWarn}`,
     choices: [
-      { id: "ipo", text: "冲刺 IPO：我要敲钟", effects: {}, resultText: "" },
+      { id: "ipo-us", text: `${IPO_MARKETS.us.name}：${IPO_MARKETS.us.note}`, effects: {}, resultText: "" },
+      { id: "ipo-hk", text: `${IPO_MARKETS.hk.name}：${IPO_MARKETS.hk.note}`, effects: {}, resultText: "" },
+      { id: "ipo-cn", text: `${IPO_MARKETS.cn.name}：${IPO_MARKETS.cn.note}`, effects: {}, resultText: "" },
       { id: "sell", text: `接受收购报价 ${fmtMoney(s, s.valuation * 1.6)}`, effects: {}, resultText: "" },
-      { id: "hold", text: "再养一年，把营收做厚", effects: { months: 6 }, resultText: "你把两家公司都婉拒了。团队震惊，但你知道自己在做什么——好饭不怕晚。" },
+      { id: "hold", text: "再养一年：全力做厚营收，等更好的窗口", effects: {}, resultText: "" },
     ],
   };
 }
@@ -744,14 +857,17 @@ function ipoDecision(s: GameState): PendingDecision {
 export function resolveEndgame(s: GameState, choiceId: string): GameState {
   syncRng(s);
   let n = { ...s };
-  if (choiceId === "ipo") {
-    const success = n.mrr > 100 && n.reputation > -10 && !n.tags.includes("toxic-terms") && n.health > 25 && n.team >= 10;
-    if (success) {
+  const m = choiceId.startsWith("ipo-") ? (choiceId.slice(4) as IpoMarket) : null;
+  if (m) {
+    const market = IPO_MARKETS[m];
+    if (market.test(n)) {
+      n.valuation = n.valuation * market.valMult;
+      n.tags = [...n.tags, `ipo-${m}`];
+      n = log(n, `🌍 你选择 ${market.name}。承销团定价时给了 ${market.valMult}× 的市场系数。`, "good");
       n = finishGame(n, "ipo");
     } else {
-      n.cash -= n.valuation * 0.06;
-      const reason = n.team < 10 ? `「公司治理不健全：${n.team} 人的团队撑不起上市公司的运作」` : "「持续盈利能力存疑」";
-      n = log(n, `💥 IPO 审核被拒！${reason}。上市费用打了水漂，市场开始唱衰你。`, "bad");
+      n.cash -= n.valuation * market.failFee;
+      n = log(n, `💥 ${market.name} 审核被拒！${market.failReason(n)}。上市费用 ${fmtMoney(n, n.valuation * market.failFee)} 打了水漂，市场开始唱衰你。`, "bad");
       n.reputation = clamp(n.reputation - 15, -100, 100);
       n.morale = clamp(n.morale - 15, 0, 100);
       n.stage = "scale";
@@ -761,11 +877,15 @@ export function resolveEndgame(s: GameState, choiceId: string): GameState {
   } else if (choiceId === "sell") {
     n = finishGame(n, "acquired");
   } else {
+    // v1.7：「再养一年」修复——不是白等，是全员冲刺的 6 个月（预算效果 ×1.5），窗口自然变好
+    n.tags = [...n.tags, "hold-boost"];
     n.month += 6;
     n.year = (n.scenario?.year ?? START_YEAR) + Math.floor(n.month / 12);
-    n.cash += n.mrr * 5;
-    n.product = clamp(n.product + 8, 0, 100);
-    n = log(n, "半年后，你的营收翻了近一倍。资本市场上，你的故事更贵了。", "good");
+    n.cash += n.mrr * 8;
+    n.product = clamp(n.product + 12, 0, 100);
+    n.valuation = Math.max(n.valuation, n.valuation * 1.25);
+    n = log(n, "📈 再养的一年：你砍掉了所有虚荣项目，全员扑在营收上——预算效率 +50%，营收与估值实实在在涨了一截。好饭不怕晚，但饭是真的熟了。", "good");
+    n = log(n, "💡 创业课：上市窗口是等不来的，是养出来的。宁德时代 2018 年上市前连续 24 个季度盈利——「等一年」的价值不在时间，在于这 12 个月你做了什么。", "info");
     if (n.valuation >= 5000 && n.mrr >= 200 && n.team >= 10) n = finishGame(n, "ipo");
     else {
       n.pendingDecision = ipoDecision(n);
