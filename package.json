@@ -1,7 +1,7 @@
 {
   "name": "founders-journey",
   "private": false,
-  "version": "1.5.1",
+  "version": "1.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -77,7 +77,7 @@
     "vite": "^7.2.4"
   },
   "license": "MIT",
-  "description": "创业人生 Founders Journey - 开源创业模拟教育游戏 / An open-source entrepreneurship simulation game",
+  "description": "\u521b\u4e1a\u4eba\u751f Founders Journey - \u5f00\u6e90\u521b\u4e1a\u6a21\u62df\u6559\u80b2\u6e38\u620f / An open-source entrepreneurship simulation game",
   "repository": {
     "type": "git",
     "url": "https://github.com/reallywong/founders-journey"

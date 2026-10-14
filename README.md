@@ -21,6 +21,8 @@ or bankruptcy court. Every run teaches a real lesson.*
 
 ---
 
+> **本仓是 v1.x 经典主线（当前 `1.7.0`）。** 最新可玩内容在 [`founders-journey-v6`](https://github.com/ReallyWong/founders-journey-v6)（**v2.2**）：[🎮 立即游玩最新版](https://reallywong.github.io/founders-journey-v6/)
+
 ## 🕰️ 经典版本 · Classic Editions
 
 像 CS 1.6 与 CS:GO 一样，每个里程碑版本都永久可玩——你可以亲手对比这 20 天它长成了什么：
@@ -30,8 +32,7 @@ or bankruptcy court. Every run teaches a real lesson.*
 | **v2.2 · 最新版** | NPC 对话剧情 + 败局复盘 + 存档码 + 真实历史股市 | [🎮 立即游玩](https://reallywong.github.io/founders-journey-v6/) |
 | **v1.7ultra** | 旧版之王：刀尖起舞剧本 + 三重彩蛋解锁体系 | [🎮 游玩](https://reallywong.github.io/founders-journey-v17u/) |
 | **v1.7.5** | 资本寒冬窗口 + 三市场 IPO（美/港/A） | [🎮 游玩](https://reallywong.github.io/founders-journey-v75/) |
-| **v1.x 主线** | 第一版的最终形态（持续更新至 v1.7 时代） | [🎮 游玩](https://reallywong.github.io/founders-journey/) |
-| **v1.x · 第一版** | 一切开始的地方：15 万启动资金，一局定生死 | [🎮 游玩](https://reallywong.github.io/founders-journey/) |
+| **v1.x 经典主线 · 本仓** | 第一版最终形态（打包版本 `1.7.0`，对应 v1.7 时代） | [🎮 游玩](https://reallywong.github.io/founders-journey/) |
 
 
 ## ✨ 为什么是这款游戏
@@ -97,7 +98,8 @@ Pick a character and a startup hub (Beijing, Shanghai, Shenzhen, Hong Kong, Toky
 customer discovery, investor pitches, multi-round funding (Seed → A → B → C), hiring, cash-flow crises, and either the IPO bell or bankruptcy court.
 Every in-game event is paired with a real business lesson drawn from documented startup history.
 
-- **Play online**: https://reallywong.github.io/founders-journey/
+- **Latest (v2.2)**: https://reallywong.github.io/founders-journey-v6/
+- **This repo (v1.x classic, 1.7.0)**: https://reallywong.github.io/founders-journey/
 - **Quick start**: `npm install && npm run dev`
 - **Contribute real startup stories as game events**: [submit here](https://github.com/reallywong/founders-journey/issues/new?template=startup-story.yml)
 - **License**: [MIT](LICENSE)
