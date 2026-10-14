@@ -35,6 +35,7 @@
 <div class="wrap">
   <h1>📊 创业人生 · 运营数据看板</h1>
   <p class="sub">匿名通关数据聚合 · 数据源 Supabase（永久存储） · 仅含对局结果（结局/行业/地区/难度），不含任何个人信息</p>
+  <p class="sub" style="color:#b45309">📐 口径说明：大看板（下方所有面板）只统计 <b>最新版 v2.2</b> 的对局；各版本的游玩人数请见「📦 各版本人气」面板。</p>
 
   <div class="cards" id="cards"></div>
 
@@ -67,7 +68,13 @@
   </div>
 
   <div class="panel">
-    <h2>🕒 最近对局</h2>
+    <h2>📦 各版本人气 <span style="font-weight:400;color:#94a3b8;font-size:12px">（全部版本合计，含历史存档版本）</span></h2>
+    <div id="versions"></div>
+    <div class="note" id="versions-note"></div>
+  </div>
+
+  <div class="panel">
+    <h2>🕒 最近对局 <span style="font-weight:400;color:#94a3b8;font-size:12px">（最新版 v2.2）</span></h2>
     <div id="recent" style="font-size:12px;color:#475569;line-height:1.9"></div>
     <div class="fallback" id="fallback">
       <div class="note" style="color:#b45309">无法直连数据源（网络受限）。你可以手动粘贴 ntfy 主题的 JSON 消息（格式：每行一个 {"message": "..."}），点按钮合并统计：</div>
@@ -80,7 +87,7 @@
 
 <script>
 const TOPIC = "https://ntfy.sh/fj-founders-journey-v3/json?poll=1";
-const CACHE_KEY = "fj_ops_cache_v1";
+const CACHE_KEY = "fj_ops_cache_v2";
 // Supabase：永久数据源（新加坡项目，匿名只读聚合视图）
 const SB_URL = "https://tejyzdubrbiigouznaeh.supabase.co";
 const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlanl6ZHVicmJpaWdvdXpuYWVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MDkzMTgsImV4cCI6MjA5NDM4NTMxOH0._m7GLDjF2b6dLkQIQoTo4UrYVwDBwtr4i3hHZrVHm9g";
@@ -182,12 +189,46 @@ function applyServer(stats, recent) {
 
 async function loadSupabase() {
   const h = { apikey: SB_ANON, Authorization: "Bearer " + SB_ANON };
-  const [stats, recent] = await Promise.all([
+  const [stats, recent, versions] = await Promise.all([
     fetch(SB_URL + "/rest/v1/run_stats?select=*", { headers: h }).then(r => { if (!r.ok) throw 0; return r.json(); }),
     fetch(SB_URL + "/rest/v1/recent_runs?select=*&limit=30", { headers: h }).then(r => { if (!r.ok) throw 0; return r.json(); }),
+    fetch(SB_URL + "/rest/v1/version_stats?select=*", { headers: h }).then(r => (r.ok ? r.json() : null)).catch(() => null),
   ]);
   if (!applyServer(stats, recent)) throw 0;
+  renderVersions(versions);
   save(); render();
+}
+
+// ── 各版本人气：独立面板，统计全版本（version 列为 NULL 的旧数据归为「旧版本(未标注)」）──
+const VERSION_LABELS = {
+  "v2.2": "🌟 v2.2 最新版", "v2.1": "v2.1 NPC对话化", "v2.0": "v2.0 财富人生",
+  "v1.9": "v1.9 杠杆版", "v1.8": "v1.8 投资系统", "v1.7ultra": "v1.7ultra 旧版之王",
+  "v1.7.5": "v1.7.5 内容包", "v1.7": "v1.7", "v1.6-beta": "v1.6-beta", "v1.6-alpha": "v1.6-alpha",
+  "旧版本(未标注)": "🕰️ 旧版本（未标注）",
+};
+function renderVersions(rows) {
+  const el = document.getElementById("versions");
+  const note = document.getElementById("versions-note");
+  if (!Array.isArray(rows) || !rows.length) {
+    el.innerHTML = "";
+    note.textContent = "等待数据库升级（version_stats 视图）后自动显示各版本人数。";
+    return;
+  }
+  note.textContent = "";
+  const total = rows.reduce((a, r) => a + (r.total || 0), 0);
+  const max = Math.max(1, ...rows.map(r => r.total || 0));
+  el.innerHTML = rows.sort((a, b) => (b.total || 0) - (a.total || 0)).map(r => {
+    const name = VERSION_LABELS[r.version] || r.version;
+    const pct = total ? ((r.total / total) * 100).toFixed(1) : "0";
+    const be = r.by_ending || {};
+    const top = Object.entries(be).sort((x, y) => y[1] - x[1]).slice(0, 1)
+      .map(([k, v]) => `${ENDING_NAMES[k] || k} ×${v}`).join("");
+    return `<div class="bar-row">
+      <div class="bar-name" title="${esc(r.version)}">${esc(name)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(r.total / max * 100).toFixed(1)}%"></div></div>
+      <div class="bar-val" style="width:auto;min-width:110px">${r.total} 局 · ${pct}%${r.avg_months ? " · 均" + r.avg_months + "月" : ""}${top ? " · " + esc(top) : ""}</div>
+    </div>`;
+  }).join("");
 }
 
 async function load() {
