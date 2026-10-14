@@ -87,7 +87,7 @@
 
 <script>
 const TOPIC = "https://ntfy.sh/fj-founders-journey-v3/json?poll=1";
-const CACHE_KEY = "fj_ops_cache_v2";
+const CACHE_KEY = "fj_ops_cache_v3";
 // Supabase：永久数据源（新加坡项目，匿名只读聚合视图）
 const SB_URL = "https://tejyzdubrbiigouznaeh.supabase.co";
 const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlanl6ZHVicmJpaWdvdXpuYWVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MDkzMTgsImV4cCI6MjA5NDM4NTMxOH0._m7GLDjF2b6dLkQIQoTo4UrYVwDBwtr4i3hHZrVHm9g";
@@ -190,9 +190,9 @@ function applyServer(stats, recent) {
 async function loadSupabase() {
   const h = { apikey: SB_ANON, Authorization: "Bearer " + SB_ANON };
   const [stats, recent, versions] = await Promise.all([
-    fetch(SB_URL + "/rest/v1/run_stats?select=*", { headers: h }).then(r => { if (!r.ok) throw 0; return r.json(); }),
-    fetch(SB_URL + "/rest/v1/recent_runs?select=*&limit=30", { headers: h }).then(r => { if (!r.ok) throw 0; return r.json(); }),
-    fetch(SB_URL + "/rest/v1/version_stats?select=*", { headers: h }).then(r => (r.ok ? r.json() : null)).catch(() => null),
+    fetch(SB_URL + "/rest/v1/run_stats_v2?select=*", { headers: h }).then(r => { if (!r.ok) throw 0; return r.json(); }),
+    fetch(SB_URL + "/rest/v1/recent_runs_v2?select=*&limit=30", { headers: h }).then(r => { if (!r.ok) throw 0; return r.json(); }),
+    fetch(SB_URL + "/rest/v1/version_stats_v2?select=*", { headers: h }).then(r => (r.ok ? r.json() : null)).catch(() => null),
   ]);
   if (!applyServer(stats, recent)) throw 0;
   renderVersions(versions);
@@ -211,7 +211,7 @@ function renderVersions(rows) {
   const note = document.getElementById("versions-note");
   if (!Array.isArray(rows) || !rows.length) {
     el.innerHTML = "";
-    note.textContent = "等待数据库升级（version_stats 视图）后自动显示各版本人数。";
+    note.textContent = "等待数据库升级（version_stats_v2 视图）后自动显示各版本人数。";
     return;
   }
   note.textContent = "";
